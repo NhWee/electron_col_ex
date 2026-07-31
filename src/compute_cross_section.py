@@ -15,7 +15,10 @@ arXiv:hep-ex/0012018), Tables 1, 3, 5, 6, 7, 8, 9, 10 and 11.
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from iminuit import Minuit
+from iminuit.cost import LeastSquares
 from uncertainties import ufloat
 
 DATA_RAW = Path(__file__).resolve().parent.parent / "data" / "raw"
@@ -23,6 +26,7 @@ DATA_PROCESSED = Path(__file__).resolve().parent.parent / "data" / "processed"
 
 BLUE = "#2a78d6"
 ORANGE = "#eb6834"
+AQUA = "#1baf7a"
 INK = "#0b0b0b"
 MUTED = "#898781"
 GRIDLINE = "#e1e0d9"
@@ -56,6 +60,13 @@ CHANNELS = {
 # Above this, a channel/point disagreement is treated as a flagged anomaly
 # rather than statistical noise (typical point-to-point scatter is <1%).
 ANOMALY_THRESHOLD_PCT = 2.0
+
+# PDG world-average values (2024), for sanity-checking the fit result --
+# not used anywhere in the fit itself.
+PDG_MZ_GEV = 91.1876
+PDG_MZ_ERR_GEV = 0.0021
+PDG_GAMMAZ_GEV = 2.4955
+PDG_GAMMAZ_ERR_GEV = 0.0023
 
 
 def load_counts() -> pd.DataFrame:
@@ -130,7 +141,45 @@ def channel_consistency_check(seven_points: pd.DataFrame) -> pd.DataFrame:
     return pivot[list(CHANNELS)].sort_index(level="year")
 
 
-def plot(comparison: pd.DataFrame, out_path: Path) -> None:
+def breit_wigner(sqrt_s: np.ndarray, sigma_peak: float, mZ: float, gammaZ: float) -> np.ndarray:
+    """Non-relativistic Breit-Wigner lineshape in terms of E_cm = sqrt(s),
+    the same simplified form used in LEP masterclass-style Z lineshape fits.
+    It ignores initial-state radiation, which is why the fitted Gamma_Z
+    below comes out a bit wider than the PDG value (radiative tails pull
+    the effective peak width up)."""
+    half_width = gammaZ / 2
+    return sigma_peak * half_width**2 / ((sqrt_s - mZ) ** 2 + half_width**2)
+
+
+def fit_breit_wigner(comparison: pd.DataFrame) -> Minuit:
+    """Least-squares fit of sigma_computed_nb vs sqrt_s_GeV to extract
+    M_Z, Gamma_Z and the peak cross section directly from our own computed
+    points (not the published ones)."""
+    least_squares = LeastSquares(
+        comparison["sqrt_s_GeV"].to_numpy(),
+        comparison["sigma_computed_nb"].to_numpy(),
+        comparison["sigma_computed_err_nb"].to_numpy(),
+        breit_wigner,
+    )
+    minuit = Minuit(least_squares, sigma_peak=1.5, mZ=91.19, gammaZ=2.5)
+    minuit.migrad()
+    minuit.hesse()
+    return minuit
+
+
+def print_fit_result(minuit: Minuit) -> None:
+    print(f"chi2/ndof = {minuit.fval:.2f}/{minuit.ndof:.0f}")
+    for name, pdg_value, pdg_err in [
+        ("mZ", PDG_MZ_GEV, PDG_MZ_ERR_GEV),
+        ("gammaZ", PDG_GAMMAZ_GEV, PDG_GAMMAZ_ERR_GEV),
+    ]:
+        fitted = minuit.values[name]
+        error = minuit.errors[name]
+        print(f"  {name:10s} = {fitted:.4f} +/- {error:.4f} GeV   (PDG: {pdg_value:.4f} +/- {pdg_err:.4f} GeV)")
+    print(f"  {'sigma_peak':10s} = {minuit.values['sigma_peak']:.4f} +/- {minuit.errors['sigma_peak']:.4f} nb")
+
+
+def plot(comparison: pd.DataFrame, out_path: Path, fit: Minuit | None = None) -> None:
     fig, ax = plt.subplots(figsize=(8, 5.5), facecolor=SURFACE)
     ax.set_facecolor(SURFACE)
 
@@ -157,6 +206,19 @@ def plot(comparison: pd.DataFrame, out_path: Path) -> None:
         label="Published (OPAL, corrected)",
         zorder=2,
     )
+
+    if fit is not None:
+        x_smooth = np.linspace(comparison["sqrt_s_GeV"].min() - 0.3, comparison["sqrt_s_GeV"].max() + 0.3, 200)
+        y_smooth = breit_wigner(x_smooth, *fit.values)
+        ax.plot(
+            x_smooth,
+            y_smooth,
+            "-",
+            color=AQUA,
+            linewidth=2,
+            label="Breit-Wigner fit",
+            zorder=1,
+        )
 
     ax.set_xlabel(r"$\sqrt{s}$ (GeV)", color=INK)
     ax.set_ylabel(r"$\sigma(e^+e^- \to \mu^+\mu^-)$ (nb)", color=INK)
@@ -193,7 +255,29 @@ def main() -> None:
     mumu.to_csv(DATA_PROCESSED / "mumu_cross_section_computed.csv", index=False)
     print(f"\nSaved computed table to {DATA_PROCESSED / 'mumu_cross_section_computed.csv'}")
 
-    plot(mumu, DATA_PROCESSED / "mumu_cross_section.png")
+    print("\n=== Breit-Wigner fit to computed mu+mu- points (all 7) ===")
+    fit_all = fit_breit_wigner(mumu)
+    print_fit_result(fit_all)
+
+    # The 1993 peak point was independently traced (via the cross-channel
+    # consistency check below) to a track-detector-only livetime issue, not
+    # a transcription error -- so it is legitimate to exclude it here rather
+    # than let one bad point pull M_Z and Gamma_Z off their true values.
+    anomalous = mumu[mumu["diff_pct"].abs() > ANOMALY_THRESHOLD_PCT]
+    clean = mumu[mumu["diff_pct"].abs() <= ANOMALY_THRESHOLD_PCT]
+    print(f"\n=== Breit-Wigner fit excluding {len(anomalous)} known-anomalous point(s) ===")
+    print(anomalous[["year", "sample", "diff_pct"]].to_string(index=False))
+    fit_clean = fit_breit_wigner(clean)
+    print_fit_result(fit_clean)
+    print(
+        "  note: chi2/ndof looks great mainly because only 3 distinct sqrt_s\n"
+        "  clusters (peak-2/peak/peak+2) feed a 3-parameter fit -- it is an\n"
+        "  almost-exact fit, not a strong overconstraint. mZ/gammaZ also carry\n"
+        "  a real ~100-300 MeV bias from skipping QED initial-state-radiation\n"
+        "  unfolding, which real LEP lineshape fits always apply."
+    )
+
+    plot(mumu, DATA_PROCESSED / "mumu_cross_section.png", fit=fit_clean)
 
     print("\n=== Cross-channel consistency check (% diff from published, by channel) ===")
     pd.set_option("display.float_format", lambda x: f"{x:.2f}")
