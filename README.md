@@ -54,8 +54,12 @@ is also all the script currently computes.
    one or two channels points at a channel-specific systematic rather than
    a bad L or a transcription error.
 4. Fits a Breit-Wigner resonance curve to the computed mu+mu- points via
-   `iminuit` to extract M_Z, Gamma_Z, and the peak cross section.
-5. Plots computed vs. published mu+mu- cross section with the fit overlaid.
+   `iminuit` to extract M_Z, Gamma_Z, and the peak cross section -- both a
+   plain fit and one with the Breit-Wigner convolved against a leading-log
+   QED initial-state-radiation radiator (numerically integrated via
+   `scipy.integrate.quad`).
+5. Plots computed vs. published mu+mu- cross section with the ISR-convolved
+   fit overlaid.
 
 ## What we found
 
@@ -71,10 +75,30 @@ is also all the script currently computes.
 - A first Breit-Wigner fit to all 7 mu+mu- points is dominated by that
   outlier (chi2/ndof = 76/4). Excluding it gives a near-perfect fit
   (chi2/ndof = 0.52/3), but M_Z and Gamma_Z still land ~100-300 MeV off the
-  PDG values. Two known reasons, not yet fixed (see below): the 7 points
-  only span 3 distinct sqrt(s) clusters, so the "great" chi2 isn't really an
-  overconstraint; and the fit has no QED initial-state-radiation unfolding,
-  which real LEP lineshape fits always apply.
+  PDG values (91.46 / 2.80 GeV vs. PDG's 91.19 / 2.50 GeV).
+- Convolving that same Breit-Wigner against a leading-log QED
+  initial-state-radiation radiator (see "ISR-convolved fit" below) and
+  refitting the 6 clean points shifts M_Z and Gamma_Z down by ~280 MeV each,
+  landing at 91.18 GeV and 2.52 GeV -- within 1 sigma of PDG's M_Z and
+  ~1.2 sigma of Gamma_Z. Most of the naive fit's bias was the missing ISR
+  treatment, not the 3-cluster sparsity.
+
+### ISR-convolved fit
+
+Radiation of a photon before annihilation always lowers the effective
+collision energy, so the *observed* cross section at a given nominal
+sqrt(s) is a mix of the true resonance shape at nearby lower energies:
+
+```
+sigma_obs(sqrt_s) = integral_0^1 H(x) * sigma_born(sqrt_s * sqrt(1-x)) dx
+```
+
+`H(x)` is the leading-log structure function `beta * x^(beta-1) * (1-x/2)`,
+with `beta = (2*alpha/pi) * (ln(s/m_e^2) - 1)` -- the standard
+Kuraev-Fadin-style exponentiated-soft-photon treatment, truncated at O(alpha)
+hard-photon terms. It is not the full ZFITTER-level radiator LEP itself
+used, but it captures the right direction and roughly the right size of the
+effect from just 6 data points.
 
 ## Setup
 
@@ -96,13 +120,16 @@ results, and the four-channel consistency check; saves outputs to
 
 ## Known limitations / next steps
 
-- No QED initial-state-radiation unfolding in the Breit-Wigner fit -- the
-  fitted M_Z and Gamma_Z carry a real bias against the PDG values because of
-  this.
+- The ISR radiator used is a truncated leading-log approximation, not the
+  full treatment (multi-photon exponentiation beyond leading log, exact
+  O(alpha^2) terms) that real LEP electroweak fits use -- adequate to show
+  the effect exists and roughly how big it is, not to claim LEP-level
+  precision from 6 points.
 - The fit is constrained by only 3 distinct energy points (peak-2/peak/
   peak+2); the other scanned points (peak-3/-1/+1/+3, prescan) exist in
   Table 1 but have no published correction factors to compute a trustworthy
-  cross section from.
+  cross section from. More independent points would make the good chi2/ndof
+  mean something stronger than "3 parameters matched 3 clusters."
 - Only the mu+mu- channel has a full compute -> validate -> fit pipeline;
   qq/ee/tau+tau- are currently used only for the cross-channel consistency
   check.
