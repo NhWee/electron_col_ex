@@ -127,13 +127,12 @@ of the pipeline, not just "close to PDG."
   leptonic partial width -- comes out to 1.9997 nb, matching the ~2.0 nb LEP
   actually measured.
 - **Angular distribution**: events are drawn from the standard spin-1-
-  exchange shape `(1+cos^2 theta) + (8/3)*A_FB*cos(theta)`, with A_FB from
-  standard lepton couplings. A_FB is treated as energy-independent here
-  (real LEP A_FB flips sign below/above the peak from gamma/Z interference --
-  not modeled), but the acceptance cut below is symmetric in cos(theta), so
-  A_FB has zero effect on the measurement either way. It's included so
-  generated events carry real per-event angular info for a future
-  A_FB/sin2(theta_W) exercise, without building that exercise now.
+  exchange shape `(1+cos^2 theta) + (8/3)*A_FB(s)*cos(theta)`. `A_FB(s)` is
+  the real energy-dependent gamma/Z interference asymmetry (see "Forward-
+  backward asymmetry" below), not a constant approximation -- the acceptance
+  cut below is symmetric in cos(theta), so it has zero effect on the
+  cross-section measurement, but the per-event angular info is real and is
+  used for a genuine second observable extraction.
 - **Toy detector acceptance**, mirroring OPAL's own `f` factor: a dedicated
   500,000-event simulation sample gives `A_hat = 0.9270 +/- 0.0004` for a
   `|cos(theta)| < 0.95` cut. Every scan point's cross section is corrected by
@@ -146,13 +145,13 @@ of the pipeline, not just "close to PDG."
 
 ### Result
 
-- Naive (no-ISR) fit: chi2/ndof = 74.01/10, mZ = 91.4210 +/- 0.0145 GeV,
-  gammaZ = 2.9116 +/- 0.0431 GeV -- **+16.1 sigma / +9.7 sigma** away from the
+- Naive (no-ISR) fit: chi2/ndof = 67.46/10, mZ = 91.4205 +/- 0.0145 GeV,
+  gammaZ = 2.9188 +/- 0.0431 GeV -- **+16.1 sigma / +9.8 sigma** away from the
   literal true input. With 13 well-separated points instead of 3 clusters,
   the missing-ISR bias is no longer hideable inside a good chi2/ndof the way
   it nearly was in the real-data fit -- it shows up as a bad fit outright.
-- ISR-convolved fit: chi2/ndof = 5.63/10, mZ = 91.1709 +/- 0.0144 GeV,
-  gammaZ = 2.4741 +/- 0.0380 GeV -- **-1.16 sigma / -0.56 sigma** from the true
+- ISR-convolved fit: chi2/ndof = 5.82/10, mZ = 91.1701 +/- 0.0144 GeV,
+  gammaZ = 2.4808 +/- 0.0404 GeV -- **-1.21 sigma / -0.36 sigma** from the true
   input. The same ISR treatment that only got the real-data fit to within
   ~1 sigma of PDG here recovers the *exact* generating parameters to well
   within its own statistical uncertainty.
@@ -171,8 +170,59 @@ borrowing OPAL's.
   show up here.
 - Constant toy luminosity and a flat |cos(theta)| acceptance cut, not real
   detector geometry or a realistic trigger/reconstruction efficiency curve.
-- A_FB is energy-independent by construction (see above) -- not currently
-  used for anything, but the angular info is there for a future extension.
+
+### Forward-backward asymmetry (A_FB)
+
+The mZ/gammaZ fit above says nothing about the weak mixing angle. A_FB does:
+its energy dependence comes from gamma/Z interference, and its shape is
+sensitive to sin2(theta_W_eff) -- the second classic LEP Z-lineshape
+observable, extracted here as a genuinely new quantity (not fed in from
+OPAL or PDG in any way).
+
+Standard "improved Born approximation" formula (the same formalism behind
+LEP's own AFB fits):
+
+```
+dsigma/dOmega ~ (1+cos^2 theta)*F1(s) + cos(theta)*F2(s)
+A_FB(s) = (3/8) * F2(s) / F1(s)
+```
+
+`F1`, `F2` are built from the photon/Z propagator ratio
+`chi(s) = kappa0 * s / (s - M_Z^2 + i*M_Z*Gamma_Z)` and standard lepton
+vector/axial couplings (`v = -1/2 + 2*sin2(theta_W_eff)`, `a = -1/2`). This
+is a *different* approximation than the non-relativistic fixed-width
+`breit_wigner()` used for the rate/lineshape fit above -- two different
+approximations for two different observables in the same script, not a bug.
+
+Two independent sanity checks are printed every run, before trusting
+anything downstream:
+- `Gamma_ee` computed from the same couplings via
+  `G_F*M_Z^3/(6*sqrt(2)*pi) * (v^2+a^2)` gives 83.39 MeV, matching PDG's
+  ~84 MeV to <1%.
+- Integrating `F1(s)` at `s=M_Z^2` over solid angle gives sigma_peak =
+  1.9818 nb, matching the independently-derived `TRUE_SIGMA_PEAK_NB` =
+  1.9997 nb to <1%. Two unrelated formulas agreeing is real evidence the
+  interference formula's normalization is right, not just plausible-looking.
+
+Each scan point's accepted events are split by cos(theta) sign into
+forward/backward counts, giving `A_FB_measured(s) = (F-B)/(F+B)` with the
+standard asymptotic error `sqrt((1-A_FB^2)/N)`. A second fit
+(`fit_afb`) then holds mZ and gammaZ fixed at the values already recovered
+from the ISR-convolved lineshape fit and fits `sin2(theta_W_eff)` as the one
+free parameter -- mirroring the real two-step LEP procedure (lineshape
+fit first, then AFB fit at fixed mZ/gammaZ).
+
+**Result**: chi2/ndof = 7.50/12, sin2(theta_W_eff) = 0.22596 +/- 0.00343
+vs. the true input 0.23155 -- **-1.63 sigma**. The measured A_FB(s) points
+trace a clear sign flip across the Z peak (positive below, negative above),
+and the fitted curve tracks the true generating curve closely -- see
+`data/processed/simulated_mumu_afb.png`.
+
+**Known limitation**: only the leptonic couplings/A_FB are modeled; a real
+sin2(theta_W_eff) extraction at LEP combined multiple final states and used
+much higher statistics per point. This closure test uses 13 points at
+2 pb^-1 each, so -1.63 sigma is a perfectly normal statistical fluctuation,
+not a claim of MeV-level precision.
 
 ## Setup
 
@@ -207,7 +257,9 @@ Both print their results to stdout and save tables/plots to
 - Only the mu+mu- channel has a full compute -> validate -> fit pipeline;
   qq/ee/tau+tau- are currently used only for the cross-channel consistency
   check.
-- `simulate_mumu.py` already carries per-event angular info (see its "Known
-  limitations" above); a natural next step is a forward-backward asymmetry
-  extraction and, from that, sin2(theta_W_eff) -- the classic second LEP
-  Z-lineshape observable, not yet attempted here.
+- `simulate_mumu.py` now extracts both mZ/gammaZ (lineshape) and
+  sin2(theta_W_eff) (forward-backward asymmetry) -- the two classic LEP
+  Z-pole observables. A natural further step is combining multiple final
+  states and/or a running-width Z propagator for a more realistic
+  precision-electroweak-style joint fit, rather than the single leptonic
+  channel and fixed-width propagator used here.
