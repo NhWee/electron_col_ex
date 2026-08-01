@@ -7,6 +7,15 @@ part: cross sections are derived from the same raw ingredients the original
 experiment used, not read off a table that already contains the final
 answer.
 
+Two scripts:
+- `src/compute_cross_section.py` -- real OPAL data, described below.
+- `src/simulate_mumu.py` -- a simulation-based closure test: generates a toy
+  Monte Carlo sample from a known truth model and checks whether the same
+  fit pipeline can recover it, addressing a fair critique that even the
+  real-data script above still consumes numbers OPAL had already computed.
+  See [Simulation-based closure test](#simulation-based-closure-test-srcsimulate_mumupy)
+  below.
+
 ## Why raw counts, not a published table
 
 The obvious shortcut is to grab a cross-section table from HEPData and call
@@ -100,6 +109,71 @@ hard-photon terms. It is not the full ZFITTER-level radiator LEP itself
 used, but it captures the right direction and roughly the right size of the
 effect from just 6 data points.
 
+## Simulation-based closure test (`src/simulate_mumu.py`)
+
+Everything above still ultimately consumes OPAL's own N, L and correction-
+factor (`f`) tables -- real arithmetic and real error propagation, but every
+input number was already OPAL's own analysis output. This script instead
+generates a toy Monte Carlo sample from a *known* truth model, reconstructs
+sigma(sqrt_s) with purely statistical error bars from the simulated event
+counts, and reuses the exact same fit functions (`fit_breit_wigner`,
+`fit_breit_wigner_isr`, imported unmodified from `compute_cross_section.py`)
+to check whether they recover the exact input truth -- a real closure test
+of the pipeline, not just "close to PDG."
+
+- **Truth model**: mZ and gammaZ fixed to the PDG values; the peak cross
+  section is *derived*, not guessed, from the standard resonance formula
+  `sigma_peak = (12*pi/M_Z^2) * Gamma_ee*Gamma_mumu / Gamma_Z^2` using PDG's
+  leptonic partial width -- comes out to 1.9997 nb, matching the ~2.0 nb LEP
+  actually measured.
+- **Angular distribution**: events are drawn from the standard spin-1-
+  exchange shape `(1+cos^2 theta) + (8/3)*A_FB*cos(theta)`, with A_FB from
+  standard lepton couplings. A_FB is treated as energy-independent here
+  (real LEP A_FB flips sign below/above the peak from gamma/Z interference --
+  not modeled), but the acceptance cut below is symmetric in cos(theta), so
+  A_FB has zero effect on the measurement either way. It's included so
+  generated events carry real per-event angular info for a future
+  A_FB/sin2(theta_W) exercise, without building that exercise now.
+- **Toy detector acceptance**, mirroring OPAL's own `f` factor: a dedicated
+  500,000-event simulation sample gives `A_hat = 0.9270 +/- 0.0004` for a
+  `|cos(theta)| < 0.95` cut. Every scan point's cross section is corrected by
+  this *same* A_hat, derived once from simulation and never from the point's
+  own data -- structurally identical to how OPAL's own correction tables are
+  used above, except computed here instead of read from a paper.
+- **Scan**: 13 points from mZ-3 to mZ+3 GeV in 0.5 GeV steps (vs. only 3
+  distinct clusters available in the real OPAL data), 2 pb^-1 toy luminosity
+  per point.
+
+### Result
+
+- Naive (no-ISR) fit: chi2/ndof = 74.01/10, mZ = 91.4210 +/- 0.0145 GeV,
+  gammaZ = 2.9116 +/- 0.0431 GeV -- **+16.1 sigma / +9.7 sigma** away from the
+  literal true input. With 13 well-separated points instead of 3 clusters,
+  the missing-ISR bias is no longer hideable inside a good chi2/ndof the way
+  it nearly was in the real-data fit -- it shows up as a bad fit outright.
+- ISR-convolved fit: chi2/ndof = 5.63/10, mZ = 91.1709 +/- 0.0144 GeV,
+  gammaZ = 2.4741 +/- 0.0380 GeV -- **-1.16 sigma / -0.56 sigma** from the true
+  input. The same ISR treatment that only got the real-data fit to within
+  ~1 sigma of PDG here recovers the *exact* generating parameters to well
+  within its own statistical uncertainty.
+
+This is the actual point of the exercise: it demonstrates the fitting
+pipeline is self-consistent and correctly unfolds the ISR effect it was
+built to unfold, using data this script generated itself rather than
+borrowing OPAL's.
+
+### Known limitations
+
+- The closure test validates *self-consistency* of the ISR treatment, not
+  agreement with a fully independent higher-order QED calculation -- the
+  same truncated leading-log radiator is used both to generate the toy
+  sample and to fit it, so a shared blind spot in that radiator would not
+  show up here.
+- Constant toy luminosity and a flat |cos(theta)| acceptance cut, not real
+  detector geometry or a realistic trigger/reconstruction efficiency curve.
+- A_FB is energy-independent by construction (see above) -- not currently
+  used for anything, but the angular info is there for a future extension.
+
 ## Setup
 
 ```
@@ -111,12 +185,12 @@ pip install -r requirements.txt
 ## Usage
 
 ```
-python src/compute_cross_section.py
+python src/compute_cross_section.py   # real OPAL data: compute, validate, fit
+python src/simulate_mumu.py           # simulation-based closure test
 ```
 
-Prints the computed vs. published mu+mu- table, the Breit-Wigner fit
-results, and the four-channel consistency check; saves outputs to
-`data/processed/` (gitignored -- regenerate by running the script).
+Both print their results to stdout and save tables/plots to
+`data/processed/` (gitignored -- regenerate by running the scripts).
 
 ## Known limitations / next steps
 
@@ -133,3 +207,7 @@ results, and the four-channel consistency check; saves outputs to
 - Only the mu+mu- channel has a full compute -> validate -> fit pipeline;
   qq/ee/tau+tau- are currently used only for the cross-channel consistency
   check.
+- `simulate_mumu.py` already carries per-event angular info (see its "Known
+  limitations" above); a natural next step is a forward-backward asymmetry
+  extraction and, from that, sin2(theta_W_eff) -- the classic second LEP
+  Z-lineshape observable, not yet attempted here.
