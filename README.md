@@ -7,13 +7,19 @@ part: cross sections are derived from the same raw ingredients the original
 experiment used, not read off a table that already contains the final
 answer.
 
-Two scripts:
+Three scripts:
 - `src/compute_cross_section.py` -- real OPAL data, described below.
 - `src/simulate_mumu.py` -- a simulation-based closure test: generates a toy
   Monte Carlo sample from a known truth model and checks whether the same
   fit pipeline can recover it, addressing a fair critique that even the
   real-data script above still consumes numbers OPAL had already computed.
   See [Simulation-based closure test](#simulation-based-closure-test-srcsimulate_mumupy)
+  below.
+- `src/simulate_mumu_mg5.py` -- the same closure test, but the truth events
+  come from a real MadGraph5_aMC@NLO matrix-element calculation instead of a
+  hand-typed formula, closing the remaining gap where `simulate_mumu.py`'s
+  fit model and truth model shared an author. See
+  [Generator-level closure test](#generator-level-closure-test-srcsimulate_mumu_mg5py)
   below.
 
 ## Why raw counts, not a published table
@@ -224,6 +230,108 @@ much higher statistics per point. This closure test uses 13 points at
 2 pb^-1 each, so -1.63 sigma is a perfectly normal statistical fluctuation,
 not a claim of MeV-level precision.
 
+## Generator-level closure test (`src/simulate_mumu_mg5.py`)
+
+`simulate_mumu.py`'s closure test has a remaining blind spot: the truth
+model (`a_fb_true`, the hand-typed IBA formula) and the fit model are the
+exact same code, written by the same author in the same sitting -- a shared
+bug there would not show up as a fit failure. This script closes that gap by
+generating the truth events with **MadGraph5_aMC@NLO** instead: a real,
+independently implemented Standard Model matrix-element calculation for
+e+e- -> mu+mu- (2 tree-level diagrams, s-channel photon + Z), run as a
+point-particle lepton collider (no PDF) with no shower/detector step -- the
+muon 4-momenta are read directly off the parton-level LHE event record.
+Everything downstream is reused unchanged: `fit_breit_wigner`,
+`fit_breit_wigner_isr`, `fit_afb`, `plot_closure`, `plot_afb`, and the same
+`|cos(theta)| < 0.95` acceptance-cut/forward-backward-counting logic as
+`simulate_mumu.py`. Only the event source changes.
+
+**Ground truth is read from MadGraph5's own `param_card.dat`**, not
+hand-typed: `mZ = 91.1880 GeV`, `gammaZ = 2.4414 GeV`, and the *dependent*
+on-shell W mass `mW = 80.4190 GeV` (MG5 derives this itself from
+`mZ`, `G_F` and `alpha_EW` -- the formula is even printed as a comment in the
+file). From `mW`/`mZ`:
+
+```
+sin2(theta_W)_on-shell = 1 - (mW/mZ)^2 = 0.2222
+```
+
+This is a real, independently-sourced ground truth for the AFB fit -- and
+it is **not** the same number as PDG's effective `sin2(theta_W_eff) =
+0.23155` used in `simulate_mumu.py`. The ~0.009 gap between the tree-level
+on-shell definition and the loop-corrected effective definition is a
+well-known real distinction in electroweak physics, not a bug, and this
+script fits for and reports the on-shell number.
+
+**Per scan point**: one MadGraph5 launch at that `sqrt(s)` (point beams,
+`nevents=1200`); MG5's own VEGAS-integrated cross section (not a rough
+survey estimate) sets `n_keep = Poisson(0.3 pb^-1 * sigma_MG5)`, and that
+many events are randomly subsampled from the generated pool -- this is where
+Poisson luminosity statistics enter, on top of MG5's otherwise-deterministic
+event count. Detector acceptance is measured the same way as
+`simulate_mumu.py`'s `A_hat`, but from a dedicated 8,000-event MG5 sample at
+the Z pole instead of a rejection-sampled one: `A_hat = 0.9634 +/- 0.0021`.
+
+### Result
+
+- **Naive (no-ISR) fit**: chi2/ndof = 8.24/10, mZ = 91.1919 +/- 0.0271 GeV
+  (**+0.14 sigma**), gammaZ = 2.4837 +/- 0.0729 GeV (**+0.58 sigma**) vs. the
+  param_card truth.
+- **ISR-convolved fit**: chi2/ndof = 18.97/10, mZ = 90.9497 +/- 0.0275 GeV
+  (**-8.67 sigma**), gammaZ = 2.0604 +/- 0.0688 GeV (**-5.54 sigma**) -- badly
+  biased, and *worse* than the naive fit.
+
+This inversion (naive beats ISR-convolved) is the opposite of every other
+fit in this project, and it is correct, not a bug: this MadGraph5 process
+has ISR/beamstrahlung switched off by default (a deliberate scope choice,
+see "Known limitations" below), so the true generating lineshape really is
+ISR-free. Convolving in a leading-log radiator that isn't actually present
+over-corrects the peak downward -- the mirror image of the real OPAL data,
+which *does* have ISR and where the naive fit was the biased one. This is
+itself a useful confirmation that the ISR-convolution machinery is doing
+real, meaningful work in both directions, not just moving numbers toward
+whatever answer was expected.
+
+The AFB fit therefore uses the **naive** fit's mZ/gammaZ as its fixed
+inputs (not the ISR-convolved ones, unlike `simulate_mumu.py`, where the
+ISR-convolved fit was the physically correct choice for OPAL's real,
+ISR-affected data):
+
+- **A_FB fit**: chi2/ndof = 13.97/12, sin2(theta_W)_on-shell =
+  0.25000 +/- 0.01874 vs. the param_card truth 0.22225 -- **+1.48 sigma**, a
+  normal statistical fluctuation for 13 points. See
+  `data/processed/simulated_mumu_mg5_closure.png` and
+  `..._mg5_afb.png` -- the closure plot shows the naive fit and true curve
+  sitting on top of each other while the ISR-convolved curve visibly
+  diverges; the AFB plot shows the same clean sign flip across the peak as
+  the pure-Python toy.
+
+### Running it
+
+Requires a working MadGraph5_aMC@NLO installation (external to this repo --
+multi-GB, needs `gfortran`/`gcc`; not in `requirements.txt`). Point the
+`MG5_PATH` environment variable at your `bin/mg5_aMC` if it isn't at the
+hardcoded default path in the script. Unlike every other script here, this
+one makes real subprocess calls to generate Monte Carlo events -- the full
+13-point scan plus the dedicated acceptance sample takes roughly 1-2 minutes
+on this machine, not the near-instant runtime of the pure-Python toy.
+
+### Known limitations
+
+- Parton-level only: no PDF (correct for a lepton collider), no
+  ISR/beamstrahlung, no parton shower, no detector simulation -- a
+  deliberate scope choice (this project's answer to "reference the
+  generate -> detector -> analysis structure of a real collider workflow,
+  without adopting the full Pythia8/Delphes/FastJet chain that structure
+  needs for hadronic LHC final states"), not an oversight. MadGraph5 >=3.2.0
+  does support ISR/beamstrahlung for lepton colliders -- a natural next step
+  if closer realism is wanted.
+- The "true" reference curve plotted in the closure test still uses the
+  non-relativistic fixed-width `breit_wigner()` shape (pinned to MG5's own
+  precise on-peak cross section) as a stand-in for MG5's actual fully
+  relativistic propagator -- adequate near the peak, a source of the small
+  residual mismatch visible in the wings of the closure plot.
+
 ## Setup
 
 ```
@@ -237,9 +345,10 @@ pip install -r requirements.txt
 ```
 python src/compute_cross_section.py   # real OPAL data: compute, validate, fit
 python src/simulate_mumu.py           # simulation-based closure test
+python src/simulate_mumu_mg5.py       # generator-level closure test (needs MadGraph5_aMC@NLO, see below)
 ```
 
-Both print their results to stdout and save tables/plots to
+All three print their results to stdout and save tables/plots to
 `data/processed/` (gitignored -- regenerate by running the scripts).
 
 ## Known limitations / next steps
@@ -263,3 +372,10 @@ Both print their results to stdout and save tables/plots to
   states and/or a running-width Z propagator for a more realistic
   precision-electroweak-style joint fit, rather than the single leptonic
   channel and fixed-width propagator used here.
+- `simulate_mumu_mg5.py` replaces the hand-typed truth model with real
+  MadGraph5_aMC@NLO matrix elements, but still parton-level only. Natural
+  next steps: enable MG5's own ISR/beamstrahlung (>=3.2.0) for a genuinely
+  ISR-affected generator truth to test the ISR-convolved fit against
+  properly, or add a Pythia8/Delphes-style shower and detector smearing step
+  (following the pattern of the user's own `collider_analysis` workflow) for
+  a more realistic detector-level closure test.

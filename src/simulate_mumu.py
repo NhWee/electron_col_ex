@@ -241,7 +241,17 @@ def fit_afb(scan: pd.DataFrame, mZ: float, gammaZ: float) -> Minuit:
     return minuit
 
 
-def plot_afb(scan: pd.DataFrame, fit_result: Minuit, mZ: float, gammaZ: float, out_path: Path) -> None:
+def plot_afb(
+    scan: pd.DataFrame,
+    fit_result: Minuit,
+    mZ: float,
+    gammaZ: float,
+    out_path: Path,
+    *,
+    sin2w_true: float = SIN2_THETAW_EFF,
+    mZ_true: float = TRUE_MZ_GEV,
+    gammaZ_true: float = TRUE_GAMMAZ_GEV,
+) -> None:
     fig, ax = plt.subplots(figsize=(8, 5.5), facecolor=SURFACE)
     ax.set_facecolor(SURFACE)
 
@@ -250,7 +260,7 @@ def plot_afb(scan: pd.DataFrame, fit_result: Minuit, mZ: float, gammaZ: float, o
     ax.axhline(0, color=MUTED, linewidth=1, zorder=0)
     ax.plot(
         x_smooth,
-        a_fb_true(x_smooth),
+        a_fb_true(x_smooth, sin2thetaw=sin2w_true, mZ=mZ_true, gammaZ=gammaZ_true),
         "-",
         color=YELLOW,
         linewidth=2,
@@ -301,7 +311,18 @@ def plot_afb(scan: pd.DataFrame, fit_result: Minuit, mZ: float, gammaZ: float, o
     print(f"Saved plot to {out_path}")
 
 
-def plot_closure(scan: pd.DataFrame, fit_plain, fit_isr, out_path: Path) -> None:
+def plot_closure(
+    scan: pd.DataFrame,
+    fit_plain,
+    fit_isr,
+    out_path: Path,
+    *,
+    sigma_peak_true: float = TRUE_SIGMA_PEAK_NB,
+    mZ_true: float = TRUE_MZ_GEV,
+    gammaZ_true: float = TRUE_GAMMAZ_GEV,
+    true_model=breit_wigner_isr,
+    true_label: str = "True generating curve (ISR-convolved)",
+) -> None:
     fig, ax = plt.subplots(figsize=(8, 5.5), facecolor=SURFACE)
     ax.set_facecolor(SURFACE)
 
@@ -309,11 +330,11 @@ def plot_closure(scan: pd.DataFrame, fit_plain, fit_isr, out_path: Path) -> None
 
     ax.plot(
         x_smooth,
-        breit_wigner_isr(x_smooth, TRUE_SIGMA_PEAK_NB, TRUE_MZ_GEV, TRUE_GAMMAZ_GEV),
+        true_model(x_smooth, sigma_peak_true, mZ_true, gammaZ_true),
         "-",
         color=YELLOW,
         linewidth=2,
-        label="True generating curve (ISR-convolved)",
+        label=true_label,
         zorder=1,
     )
     ax.plot(
@@ -398,7 +419,15 @@ def main() -> None:
     pull_gammaZ_isr = (fit_isr.values["gammaZ"] - TRUE_GAMMAZ_GEV) / fit_isr.errors["gammaZ"]
     print(f"  pull vs. TRUE input: mZ {pull_mZ_isr:+.2f} sigma, gammaZ {pull_gammaZ_isr:+.2f} sigma")
 
-    plot_closure(scan, fit_plain, fit_isr, DATA_PROCESSED / "simulated_mumu_closure.png")
+    plot_closure(
+        scan,
+        fit_plain,
+        fit_isr,
+        DATA_PROCESSED / "simulated_mumu_closure.png",
+        sigma_peak_true=TRUE_SIGMA_PEAK_NB,
+        mZ_true=TRUE_MZ_GEV,
+        gammaZ_true=TRUE_GAMMAZ_GEV,
+    )
 
     print("\n=== Sanity checks on the gamma/Z interference (IBA) formula ===")
     gamma_ee_check = gamma_ee_from_couplings()
@@ -419,7 +448,16 @@ def main() -> None:
     print(f"  sin2(theta_W_eff) = {fitted_sin2:.5f} +/- {fitted_sin2_err:.5f}   (true input: {SIN2_THETAW_EFF:.5f})")
     print(f"  pull vs. TRUE input: {pull_sin2:+.2f} sigma")
 
-    plot_afb(scan, fit_afb_result, fit_isr.values["mZ"], fit_isr.values["gammaZ"], DATA_PROCESSED / "simulated_mumu_afb.png")
+    plot_afb(
+        scan,
+        fit_afb_result,
+        fit_isr.values["mZ"],
+        fit_isr.values["gammaZ"],
+        DATA_PROCESSED / "simulated_mumu_afb.png",
+        sin2w_true=SIN2_THETAW_EFF,
+        mZ_true=TRUE_MZ_GEV,
+        gammaZ_true=TRUE_GAMMAZ_GEV,
+    )
 
 
 if __name__ == "__main__":

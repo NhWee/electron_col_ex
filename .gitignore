@@ -6,3 +6,5 @@ data/raw/*
 !data/raw/*.csv
 data/processed/
 .claude/
+py.py
+parser.out
