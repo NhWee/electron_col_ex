@@ -5,6 +5,9 @@ __pycache__/
 data/raw/*
 !data/raw/*.csv
 data/processed/
+
+# figures/ is tracked on purpose: the README embeds it.
+# Regenerate with the scripts, then copy the ones the README references.
 .claude/
 py.py
 parser.out
