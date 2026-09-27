@@ -72,7 +72,9 @@ TRUE_SIGMA_PEAK_NB = (
 # Standard "improved Born approximation" (IBA) formula (e.g. Renton,
 # Electroweak Interactions): dsigma/dOmega ~ (1+cos^2 theta)*F1(s) +
 # cos(theta)*F2(s), with F1, F2 built from the photon/Z propagator ratio
-# chi(s) and standard lepton vector/axial couplings. A_FB(s) = (3/8)*F2/F1
+# chi(s) and standard lepton vector/axial couplings. theta is the angle between
+# the outgoing mu- and the incoming e- (standard convention: A_FB < 0 below the
+# Z pole, > 0 above). A_FB(s) = (3/8)*F2/F1
 # is the standard result of integrating forward vs. backward hemispheres.
 # This captures the real gamma/Z interference (sign flip below/above the
 # peak) that the constant-A_FB approximation could not -- but note it is a
@@ -97,8 +99,12 @@ def iba_f1_f2(sqrt_s: np.ndarray, sin2thetaw: float, mZ: float, gammaZ: float) -
     v = -0.5 + 2 * sin2thetaw
     a = -0.5
     c = chi(sqrt_s, mZ, gammaZ)
-    f1 = Q_LEPTON**4 - 2 * Q_LEPTON**2 * v * v * np.real(c) + (v**2 + a**2) ** 2 * np.abs(c) ** 2
-    f2 = -4 * Q_LEPTON**2 * a * a * np.real(c) + 8 * (v * a) ** 2 * np.abs(c) ** 2
+    # Q_f enters the interference terms LINEARLY (the electron's charge is
+    # absorbed into the sign convention). Squaring it here flipped the sign of
+    # A_FB until 2026-09-27; checked against an independent helicity-amplitude
+    # calculation, which this form now matches to machine precision.
+    f1 = Q_LEPTON**2 - 2 * Q_LEPTON * v * v * np.real(c) + (v**2 + a**2) ** 2 * np.abs(c) ** 2
+    f2 = -4 * Q_LEPTON * a * a * np.real(c) + 8 * (v * a) ** 2 * np.abs(c) ** 2
     return f1, f2
 
 
@@ -235,7 +241,10 @@ def fit_afb(scan: pd.DataFrame, mZ: float, gammaZ: float) -> Minuit:
         scan["afb_err"].to_numpy(),
         model,
     )
-    minuit = Minuit(least_squares, sin2thetaw=0.25)
+    # A_FB depends on sin2(theta_W) only through v^2, so the fit is exactly
+    # symmetric under s2w -> 0.5 - s2w and s2w = 0.25 (v = 0) is a stationary
+    # point. Start on the physical branch, below 0.25, not on the saddle.
+    minuit = Minuit(least_squares, sin2thetaw=0.23)
     minuit.migrad()
     minuit.hesse()
     return minuit

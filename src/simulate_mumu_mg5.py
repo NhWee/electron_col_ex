@@ -160,15 +160,22 @@ def run_mg5_launch(sqrt_s: float, nevents: int, seed: int) -> tuple[Path, float]
 
 
 def parse_lhe_costheta(lhe_path: Path) -> np.ndarray:
-    """cos(theta) of the outgoing mu- relative to the e+ beam direction (pdg
-    -11, confirmed by hand to consistently carry pz=+E_beam in this
-    process's LHE output). The lab frame is the CM frame here since
-    lpp1=lpp2=0 -- no PDF/parton boost to undo."""
+    """cos(theta) of the outgoing mu- relative to the incoming e- direction,
+    the standard A_FB convention. The e- direction is read from each event
+    rather than assumed, so the result does not depend on which beam MG5 puts
+    along +z. The lab frame is the CM frame here since lpp1=lpp2=0 -- no
+    PDF/parton boost to undo.
+
+    Until 2026-09-27 this measured theta from the e+ beam, which flips A_FB.
+    Combined with a sign error in simulate_mumu.iba_f1_f2 the two flips
+    cancelled in F2, and the leftover mismatch in F1 pulled the A_FB fit to
+    sin2(theta_W) = 0.25 exactly."""
     with gzip.open(lhe_path, "rt") as f:
         text = f.read()
     costhetas = []
     for block in text.split("<event>")[1:]:
         body = block.split("</event>")[0]
+        p_mu = p_em = None
         for line in body.splitlines():
             fields = line.split()
             if len(fields) < 10:
@@ -177,10 +184,13 @@ def parse_lhe_costheta(lhe_path: Path) -> np.ndarray:
                 pdg, status = int(fields[0]), int(fields[1])
             except ValueError:
                 continue
-            if pdg == 13 and status == 1:
-                px, py, pz = float(fields[6]), float(fields[7]), float(fields[8])
-                costhetas.append(pz / np.sqrt(px**2 + py**2 + pz**2))
-                break
+            p = np.array([float(fields[6]), float(fields[7]), float(fields[8])])
+            if pdg == 11 and status == -1:
+                p_em = p
+            elif pdg == 13 and status == 1:
+                p_mu = p
+        if p_mu is not None and p_em is not None:
+            costhetas.append(float(p_mu @ p_em / (np.linalg.norm(p_mu) * np.linalg.norm(p_em))))
     return np.array(costhetas)
 
 

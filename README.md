@@ -39,8 +39,8 @@ done here.
 | 2 | What about the 7th? | **1993 "peak" is $-7.5\%$ off**, and the miss is isolated to the two *track-based* channels ($\mu\mu$, $\tau\tau$). The calorimeter channels ($qq$, $ee$) are fine, which points at the luminosity rather than a transcription error |
 | 3 | Fit a Breit-Wigner to the clean points, giving $M_Z$, $\Gamma_Z$? | $91.459\,/\,2.799$ GeV, i.e. 272 and 304 MeV above PDG. Good $\chi^2/\mathrm{ndof}$ (0.52/3), wrong answer |
 | 4 | Same fit, with QED initial-state radiation convolved in? | $\mathbf{91.179 \pm 0.012\,/\,2.518 \pm 0.019}$ GeV, within $1\sigma$ and $1.2\sigma$ of PDG. ISR was worth $-280$ MeV on both |
-| 5 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+16.1\sigma\,/\,+9.8\sigma$ off, the ISR fit $-1.2\sigma\,/\,-0.4\sigma$ off. It recovers the generating parameters |
-| 6 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.22596 \pm 0.00343$ from the forward-backward asymmetry (true input 0.23155, $-1.6\sigma$) |
+| 5 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+16.2\sigma\,/\,+9.7\sigma$ off, the ISR fit $-1.1\sigma\,/\,-0.5\sigma$ off. It recovers the generating parameters |
+| 6 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.22824 \pm 0.00384$ from the forward-backward asymmetry (true input 0.23155, $-0.9\sigma$) |
 | 7 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.7\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work |
 
 Rows 3 and 4 are the physics result. Rows 5 to 7 are the evidence that row 4
@@ -196,16 +196,22 @@ and the lepton neutral-current couplings
 
 $$v = -\tfrac{1}{2} + 2\sin^2\theta_W, \qquad a = -\tfrac{1}{2}$$
 
-the differential cross section in the improved Born approximation is
+the differential cross section in the improved Born approximation, with
+$\theta$ the angle between the outgoing $\mu^-$ and the incoming $e^-$, is
 
 $$\frac{d\sigma}{d\Omega} = \frac{\alpha^2}{4s}\Big[(1+\cos^2\theta)\,F_1(s) + \cos\theta\,F_2(s)\Big]$$
 
-$$F_1 = \underbrace{Q_\ell^4}_{\gamma\ \mathrm{only}} - \underbrace{2Q_\ell^2 v^2\,\mathrm{Re}\,\chi}_{\gamma/Z\ \mathrm{interference}} + \underbrace{(v^2+a^2)^2|\chi|^2}_{Z\ \mathrm{only}}, \qquad F_2 = -4Q_\ell^2a^2\,\mathrm{Re}\,\chi + 8(va)^2|\chi|^2$$
+$$F_1 = \underbrace{Q_\ell^2}_{\gamma\ \mathrm{only}} - \underbrace{2Q_\ell v^2\,\mathrm{Re}\,\chi}_{\gamma/Z\ \mathrm{interference}} + \underbrace{(v^2+a^2)^2|\chi|^2}_{Z\ \mathrm{only}}, \qquad F_2 = -4Q_\ell a^2\,\mathrm{Re}\,\chi + 8(va)^2|\chi|^2$$
 
-The three pieces of $F_1$ are the point: **a pure Breit-Wigner keeps only the
-last one.** The interference term carries $\mathrm{Re}\,\chi$, which changes
-sign across the resonance, so dropping it distorts the lineshape
-*antisymmetrically* about the peak -- exactly the direction that biases a mass.
+with $Q_\ell = -1$ entering the interference terms *linearly* (the electron's
+charge is absorbed into the sign). This form agrees to machine precision with
+an independent helicity-amplitude calculation.
+
+A pure Breit-Wigner keeps only the last piece of $F_1$. For leptons that costs
+little: the interference term in $F_1$ carries $v^2 \approx 0.0014$, so it
+barely touches the $\mu^+\mu^-$ lineshape ($-1.5$ MeV on $M_Z$ here; see
+Caveats). Its real footprint is in $F_2$, where it enters with
+$a^2 = 1/4$.
 
 Two integrals follow. Over the full solid angle the $\cos\theta$ term vanishes
 and $\int d\Omega\,(1+\cos^2\theta) = 16\pi/3$, so
@@ -219,8 +225,8 @@ $$A_{\mathrm{FB}} = \frac{F-B}{F+B} = \frac{F_2}{\tfrac{8}{3}F_1} = \frac{3}{8}\
 
 which is the `0.375 * f2 / f1` in the code. Because $F_2$ is dominated by
 $\mathrm{Re}\,\chi$ near the peak, $A_{\mathrm{FB}}$ flips sign as $\sqrt{s}$
-crosses $M_Z$: the sign flip in the asymmetry plot is the interference term
-made directly observable.
+crosses $M_Z$ -- negative below, positive above -- and the sign flip in the
+asymmetry plot is the interference term made directly observable.
 
 The same couplings fix the leptonic partial width,
 
@@ -243,7 +249,7 @@ which matters when comparing sections 2 and 3:
 The $\sim 0.009$ gap is physical, not a discrepancy: the on-shell definition is
 a tree-level relation between measured masses, the effective one absorbs loop
 corrections into the coupling $A_{\mathrm{FB}}$ actually measures. Quoting a
-fitted asymmetry against the wrong one is a $2.5\%$ error from bookkeeping
+fitted asymmetry against the wrong one is a $4\%$ error from bookkeeping
 alone.
 
 ### 0.5 Initial-state radiation, and why it biases the mass
@@ -252,8 +258,9 @@ Before annihilating, the electron or positron can radiate a photon, so the
 annihilation happens at a *lower* effective energy
 $\sqrt{s'} = \sqrt{s}\sqrt{1-x}$. Radiation only ever goes one way -- you
 cannot radiate energy *into* a collision -- so the distortion is one-sided:
-**the observed peak sits too high in energy and is smeared toward the low
-side.** Fitting an unradiated Breit-Wigner to radiated data therefore returns
+**the observed peak moves up in energy and grows a radiative tail on the
+high-energy side**, because above the resonance a collision can radiate down
+onto it. Fitting an unradiated Breit-Wigner to radiated data therefore returns
 too large a mass and width, which is exactly what this project sees
 (+272 MeV, +304 MeV).
 
@@ -261,18 +268,23 @@ The correction convolves with the probability $H(x)$ of losing a fraction $x$:
 
 $$\sigma_{\mathrm{obs}}(s) = \int_0^{x_{\max}} H(x)\,\sigma_{\mathrm{born}}\big(s(1-x)\big)\,dx$$
 
-In the leading-log (Kuraev-Fadin) structure-function approach, soft and virtual
-photons exponentiate into a power law and the first hard-photon correction is
-kept explicitly:
+In the leading-log structure-function approach, soft and virtual photons
+exponentiate into a power law. To $\mathcal{O}(\alpha)$ the radiator is
 
-$$H(x) = \beta\,x^{\beta-1}\left(1 - \frac{x}{2}\right), \qquad \beta = \frac{2\alpha}{\pi}\left(\ln\frac{s}{m_e^2} - 1\right)$$
+$$H(x) = \beta\,x^{\beta-1}\left(1 + \frac{3}{4}\beta\right) - \beta\left(1 - \frac{x}{2}\right), \qquad \beta = \frac{2\alpha}{\pi}\left(\ln\frac{s}{m_e^2} - 1\right)$$
 
-At the Z, $\beta = 0.1077$. The exponent is negative ($x^{-0.89}$), so $H$
-diverges as $x \to 0$ -- infinitely many arbitrarily soft photons -- but
-integrably: $\int_0^1 \beta x^{\beta-1}dx = 1$ exactly, the statement that
-*something* always happens. With the hard term,
-$\int_0^1 H\,dx = 1 - \beta/(2(1+\beta)) = 0.951$; the missing $5\%$ is
-radiation hard enough to leave the truncation's domain.
+where $\tfrac34\beta$ is the soft+virtual correction and $-\beta(1-x/2)$ the
+hard-photon term. Both follow from the QED splitting function
+$[(1+z^2)/(1-z)]_+$, whose plus prescription makes $\int_0^1 H\,dx = 1$
+exactly: radiation moves cross section to lower energy without creating or
+destroying it. At the Z, $\beta = 0.1077$, so $x^{\beta-1} = x^{-0.89}$
+diverges as $x \to 0$ -- arbitrarily soft photons -- but integrably.
+
+**The code uses a simplified form**, $\beta x^{\beta-1}(1 - x/2)$, which drops
+the soft+virtual factor and applies the hard correction multiplicatively. It
+integrates to $0.951$ rather than 1. The normalization is absorbed by the free
+$\sigma_{\mathrm{peak}}$; the shape difference is not, and moves the fitted
+$M_Z$ by $+7$ MeV and $\Gamma_Z$ by $+10$ MeV (see Caveats).
 
 Two practical consequences:
 
@@ -360,9 +372,9 @@ construction. A good $\chi^2$ hid a 272 MeV bias.
 
 ### The ISR correction
 
-The third row convolves the Breit-Wigner with the QED radiator $H(x)$ of
-section 0.5, integrated numerically with `scipy.integrate.quad`. It is a
-truncated leading-log treatment, not the ZFITTER-level radiator LEP itself
+The third row convolves the Breit-Wigner with the simplified QED radiator
+described in section 0.5, integrated numerically with `scipy.integrate.quad`.
+It is a truncated leading-log treatment, not the ZFITTER-level radiator LEP itself
 used: enough to get the direction and rough size of the effect out of six
 points, not enough for LEP precision.
 
@@ -408,8 +420,8 @@ return what went in.
 
 | Fit | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | pull vs. **true input** |
 |---|---|---|---|---|
-| Naive (no ISR) | 67.46/10 | $91.4205 \pm 0.0145$ | $2.9188 \pm 0.0431$ | $\mathbf{+16.1\sigma\,/\,+9.8\sigma}$ |
-| ISR-convolved | 5.82/10 | $91.1701 \pm 0.0144$ | $2.4808 \pm 0.0404$ | $\mathbf{-1.21\sigma\,/\,-0.36\sigma}$ |
+| Naive (no ISR) | 71.52/10 | $91.4220 \pm 0.0145$ | $2.9121 \pm 0.0430$ | $\mathbf{+16.2\sigma\,/\,+9.7\sigma}$ |
+| ISR-convolved | 5.69/10 | $91.1718 \pm 0.0144$ | $2.4750 \pm 0.0403$ | $\mathbf{-1.10\sigma\,/\,-0.51\sigma}$ |
 
 With 13 well-separated points instead of 3 clusters, the missing-ISR bias can
 no longer hide inside a flattering $\chi^2/\mathrm{ndof}$ as it nearly did on
@@ -447,10 +459,16 @@ real two-step LEP procedure.
        alt="Forward-backward asymmetry across the Z peak, showing the sign flip">
 </p>
 
-$\chi^2/\mathrm{ndof} = 7.50/12$ and
-$\sin^2\theta_W^{\mathrm{eff}} = 0.22596 \pm 0.00343$ against the true input
-0.23155, a $-1.63\sigma$ pull. The measured points trace the expected sign flip
-across the peak, positive below and negative above.
+$\chi^2/\mathrm{ndof} = 8.65/12$ and
+$\sin^2\theta_W^{\mathrm{eff}} = 0.22824 \pm 0.00384$ against the true input
+0.23155, a $-0.86\sigma$ pull. The measured points trace the sign flip across
+the peak, negative below and positive above.
+
+$A_{\mathrm{FB}}$ depends on $\sin^2\theta_W$ only through $v^2$, so the fit
+is exactly symmetric under $\sin^2\theta_W \to 0.5 - \sin^2\theta_W$ and has
+a mirror solution with identical $\chi^2$; the fit starts on the physical
+branch below 0.25. (These numbers changed on 2026-09-27 when a sign error in the
+interference terms was fixed -- see section 3.)
 
 ### Known limitations
 
@@ -458,12 +476,12 @@ across the peak, positive below and negative above.
   agreement with an independent higher-order QED calculation: the same
   truncated leading-log radiator both generates and fits the sample, so a
   shared blind spot inside it would not show up here. Section 3 exists to
-  attack exactly that.
+  attack exactly that -- and it did; see the correction there.
 - Constant toy luminosity and a flat $|\cos\theta|$ acceptance cut, not real
   detector geometry or a realistic efficiency curve.
 - Only leptonic couplings are modeled. A real
   $\sin^2\theta_W^{\mathrm{eff}}$ extraction combined multiple final states at
-  far higher statistics; $-1.63\sigma$ from 13 points at 2 pb<sup>-1</sup> is
+  far higher statistics; $-0.86\sigma$ from 13 points at 2 pb<sup>-1</sup> is
   an ordinary statistical fluctuation, not a precision claim.
 
 </details>
@@ -526,14 +544,22 @@ directions*, rather than always nudging toward the expected number.
 
 The $A_{\mathrm{FB}}$ fit therefore fixes $M_Z$/$\Gamma_Z$ from the **naive**
 fit here, unlike section 2 where the ISR-convolved fit was the correct choice
-for OPAL's ISR-affected data:
+for OPAL's ISR-affected data. In `data/processed/simulated_mumu_mg5_closure.png`
+the naive fit and the true curve sit on top of each other while the ISR curve
+visibly diverges.
 
-$\chi^2/\mathrm{ndof} = 13.97/12$ and
-$\sin^2\theta_W^{\text{on-shell}} = 0.25000 \pm 0.01874$ against the
-param_card truth 0.22225, a $+1.48\sigma$ pull, an ordinary fluctuation for 13
-points. In `data/processed/simulated_mumu_mg5_closure.png` the naive fit and
-the true curve sit on top of each other while the ISR curve visibly diverges;
-`..._mg5_afb.png` shows the same clean sign flip as the pure-Python toy.
+**Correction (2026-09-27).** An earlier version quoted
+$\sin^2\theta_W^{\text{on-shell}} = 0.25000 \pm 0.01874$ here as a
+$+1.48\sigma$ fluctuation. It was not a fluctuation. `simulate_mumu.py` had the
+charge squared in the $\gamma/Z$ interference terms, which flipped
+$A_{\mathrm{FB}}$, and this script measured $\theta$ from the $e^+$ beam, which
+flipped it back in $F_2$. The mismatch left in $F_1$ can only be absorbed by
+driving $v^2 \to 0$, i.e. $\sin^2\theta_W \to 0.25$: a noiseless Asimov
+sample with this script's settings lands on exactly 0.25000 from any starting
+value. Both are fixed, and the same Asimov sample now returns
+$0.2223 \pm 0.0067$ against the truth 0.22225. The lineshape results above are
+unaffected (the acceptance cut is symmetric in $\cos\theta$); **the
+$A_{\mathrm{FB}}$ fit needs re-running with MadGraph5.**
 
 ### Running it
 
@@ -592,8 +618,13 @@ Per-script limitations are inside each section above. Project-wide:
 
 - **The ISR radiator is a truncated leading-log approximation**: no
   multi-photon exponentiation beyond leading log, no exact
-  $\mathcal{O}(\alpha^2)$ terms. Enough to show the effect exists and roughly
-  how large it is; not enough to claim LEP-level precision from six points.
+  $\mathcal{O}(\alpha^2)$ terms -- and the code uses a simplified form of even
+  the $\mathcal{O}(\alpha)$ radiator (section 0.5). Switching to the full
+  $\mathcal{O}(\alpha)$ leading-log radiator moves $M_Z$ by $+7$ MeV and
+  $\Gamma_Z$ by $+10$ MeV, the largest model effect identified so far and
+  about $0.6\sigma$ of the statistical error. Enough to show the effect exists
+  and roughly how large it is; not enough to claim LEP-level precision from six
+  points.
 - **Only 3 distinct energy points constrain the real-data fit**
   (peak$-2$, peak, peak$+2$). The other points in Table 1 have no published
   correction factors, so no trustworthy cross section can be computed from
@@ -601,15 +632,15 @@ Per-script limitations are inside each section above. Project-wide:
   stronger than "3 parameters matched 3 clusters".
 - **Only $\mu^+\mu^-$ gets the full compute, validate, fit pipeline**; $qq$,
   $ee$ and $\tau\tau$ are used only for the cross-channel consistency check.
-- **The lineshape model omits photon exchange and $\gamma/Z$ interference**
-  (section 0.3 explains why that matters, and `simulate_mumu.py` already
-  implements the terms for the asymmetry side). Refitting with them included
-  moves $M_Z$ by roughly $-30$ MeV, about $2.5\times$ the quoted fit
-  uncertainty, and brings $\Gamma_Z$ closer to PDG. **The quoted $\pm 12$ MeV
-  is therefore optimistic**: it is a statistical error on a model whose choice
-  is worth more than the error itself. Including the term also requires
-  matching OPAL's own $\sqrt{s'}$ selection cut, because the photon term makes
-  the ISR integral cut-dependent (radiative return, section 0.5).
+- **The lineshape model omits photon exchange and $\gamma/Z$ interference.**
+  For the muon channel both are small. Refitting one term at a time (ISR
+  included, $\sqrt{s'}/\sqrt{s} > 0.9$) moves $M_Z$ by $+3.5$ MeV for photon
+  exchange and $-1.5$ MeV for the interference, which enters the total cross
+  section only through $2v^2 \approx 0.003$ (section 0.3). An earlier version
+  of this README attributed a $\sim -30$ MeV shift to these terms; that shift
+  was the mass-definition change in the next bullet. Including the photon term
+  does make the ISR integral depend on OPAL's own $\sqrt{s'}$ cut (radiative
+  return, section 0.5).
 - **The propagator convention is not the LEP one.** The fit uses a
   non-relativistic Breit-Wigner in $\sqrt{s}$; published $M_Z$ values come from
   the relativistic running-width form, and the two mass definitions differ by
@@ -617,7 +648,10 @@ Per-script limitations are inside each section above. Project-wide:
   effect of switching happens to be small ($\sim 5$ MeV, and under $1$ MeV once
   ISR is included) because the numerator and denominator differences cancel,
   but that cancellation is a coincidence of this parametrization, not a reason
-  the convention does not matter.
+  the convention does not matter. Mixing conventions is the real hazard: a
+  fixed-width fit, such as one using the $\chi(s)$ of section 0.3, returns a
+  mass about 34 MeV below the running-width one -- which is what the earlier
+  "$-30$ MeV" actually measured.
 - **Natural extensions**: a joint multi-channel fit for a more realistic
   precision-electroweak treatment; enabling MG5's own ISR/beamstrahlung so
   there is a genuinely ISR-affected generator truth to test the ISR-convolved
