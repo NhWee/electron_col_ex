@@ -41,7 +41,7 @@ done here.
 | 4 | Same fit, with QED initial-state radiation convolved in? | $\mathbf{91.179 \pm 0.012\,/\,2.518 \pm 0.019}$ GeV, within $1\sigma$ and $1.2\sigma$ of PDG. ISR was worth $-280$ MeV on both |
 | 5 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+16.2\sigma\,/\,+9.7\sigma$ off, the ISR fit $-1.1\sigma\,/\,-0.5\sigma$ off. It recovers the generating parameters |
 | 6 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.22824 \pm 0.00384$ from the forward-backward asymmetry (true input 0.23155, $-0.9\sigma$) |
-| 7 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.7\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work |
+| 7 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.5\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work. $A_{\mathrm{FB}}$ gives $\sin^2\theta_W^{\text{on-shell}} = 0.2243 \pm 0.0071$ (truth 0.2222, $+0.3\sigma$) |
 
 Rows 3 and 4 are the physics result. Rows 5 to 7 are the evidence that row 4
 is not a coincidence.
@@ -524,14 +524,18 @@ count to
 $n_{\mathrm{keep}} = \mathrm{Poisson}(0.3\,\mathrm{pb}^{-1} \times \sigma_{\mathrm{MG5}})$,
 which is where Poisson luminosity statistics enter on top of MG5's otherwise
 deterministic event count. Acceptance is measured as in section 2, from a
-dedicated 8,000-event MG5 sample at the pole: $\hat{A} = 0.9634 \pm 0.0021$.
+dedicated 8,000-event MG5 sample at the pole: $\hat{A} = 0.9595 \pm 0.0022$.
+This is higher than section 2's 0.9271 because MG5's default `run_card.dat`
+already requires lepton $p_T > 10$ GeV, i.e. $|\cos\theta| < 0.976$ at the
+pole. $\hat{A}$ here is relative to that fiducial region, and so is
+$\sigma_{\mathrm{MG5}}$, so the closure is consistent.
 
 ### Result: the fits swap places, and that is correct
 
 | Fit | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | pull vs. param_card truth |
 |---|---|---|---|---|
-| Naive (no ISR) | 8.24/10 | $91.1919 \pm 0.0271$ | $2.4837 \pm 0.0729$ | $\mathbf{+0.14\sigma\,/\,+0.58\sigma}$ |
-| ISR-convolved | 18.97/10 | $90.9497 \pm 0.0275$ | $2.0604 \pm 0.0688$ | $\mathbf{-8.67\sigma\,/\,-5.54\sigma}$ |
+| Naive (no ISR) | 14.27/10 | $91.1979 \pm 0.0271$ | $2.4685 \pm 0.0719$ | $\mathbf{+0.37\sigma\,/\,+0.38\sigma}$ |
+| ISR-convolved | 26.27/10 | $90.9535 \pm 0.0277$ | $2.0571 \pm 0.0673$ | $\mathbf{-8.46\sigma\,/\,-5.71\sigma}$ |
 
 The naive fit beating the ISR fit is the opposite of every other fit here, and
 it is right. This MG5 process has ISR/beamstrahlung off by default (a scope
@@ -548,6 +552,16 @@ for OPAL's ISR-affected data. In `data/processed/simulated_mumu_mg5_closure.png`
 the naive fit and the true curve sit on top of each other while the ISR curve
 visibly diverges.
 
+With $M_Z$ and $\Gamma_Z$ fixed from the naive fit, the $A_{\mathrm{FB}}$ fit
+returns
+
+$$\sin^2\theta_W^{\text{on-shell}} = 0.22430 \pm 0.00712$$
+
+against the truth 0.22225: a $+0.29\sigma$ pull, $\chi^2/\mathrm{ndof} = 17.11/12$.
+The measured asymmetry is negative below the pole and positive above it
+(`data/processed/simulated_mumu_mg5_afb.png`), as MG5's matrix elements
+require.
+
 **Correction (2026-09-27).** An earlier version quoted
 $\sin^2\theta_W^{\text{on-shell}} = 0.25000 \pm 0.01874$ here as a
 $+1.48\sigma$ fluctuation. It was not a fluctuation. `simulate_mumu.py` had the
@@ -557,9 +571,11 @@ flipped it back in $F_2$. The mismatch left in $F_1$ can only be absorbed by
 driving $v^2 \to 0$, i.e. $\sin^2\theta_W \to 0.25$: a noiseless Asimov
 sample with this script's settings lands on exactly 0.25000 from any starting
 value. Both are fixed, and the same Asimov sample now returns
-$0.2223 \pm 0.0067$ against the truth 0.22225. The lineshape results above are
-unaffected (the acceptance cut is symmetric in $\cos\theta$); **the
-$A_{\mathrm{FB}}$ fit needs re-running with MadGraph5.**
+$0.2223 \pm 0.0067$ against the truth 0.22225. All numbers in this section
+are from the re-run on 2026-09-27 with the fixed code (MadGraph5 v3.5.0).
+The lineshape fits do not depend on the fix, since the acceptance cut is
+symmetric in $\cos\theta$; they moved within their errors only because the
+re-run generated a new event sample.
 
 ### Running it
 
@@ -582,6 +598,11 @@ the acceptance sample takes 1-2 minutes.
   precise on-peak cross section) as a stand-in for MG5's fully relativistic
   propagator: adequate near the peak, and the source of the small residual
   mismatch visible in the wings.
+- $A_{\mathrm{FB}}$ is counted inside $|\cos\theta| < c = 0.95$ but fitted with
+  the full-angle formula. The counted asymmetry is smaller by
+  $\frac{4}{3}\,\frac{c}{1 + c^2/3} = 0.974$; fitting that on Asimov data
+  moves $\sin^2\theta_W$ by $+0.0003$ ($0.04\sigma$). Negligible here, and
+  section 2 has the same effect.
 
 </details>
 
