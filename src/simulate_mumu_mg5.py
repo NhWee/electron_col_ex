@@ -86,25 +86,54 @@ MASS_LINE_RE = re.compile(r"^\s*(\d+)\s+([\d.eE+-]+)\s*#\s*(\S+)")
 DECAY_LINE_RE = re.compile(r"^\s*DECAY\s+(\d+)\s+([\d.eE+-]+)")
 
 
+MG5_LOG_DIR = DATA_PROCESSED / "mg5_logs"
+MG5_TIMEOUT_S = 30 * 60  # per launch; a normal launch here takes ~30 s
+_launch_counter = 0
+
+
 def _run_mg5(commands: list[str]) -> str:
+    """Run one MG5 command script. MG5's stdout+stderr are streamed to a
+    log file under data/processed/mg5_logs/ (so progress can be followed
+    with `tail -f` and a stuck run can be diagnosed), stdin is closed so
+    that any question MG5 asks beyond the scripted answers falls through
+    to its default instead of waiting for a keyboard that nobody is
+    watching, and a timeout turns a hang into an error with the log path.
+    Returns the full output text, which the caller parses."""
+    global _launch_counter
     if not MG5_EXECUTABLE.exists():
         raise FileNotFoundError(
             f"MadGraph5 executable not found at {MG5_EXECUTABLE}. "
             "Set the MG5_PATH environment variable to your bin/mg5_aMC."
         )
+    MG5_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _launch_counter += 1
+    log_path = MG5_LOG_DIR / f"mg5_launch_{_launch_counter:02d}.log"
     with tempfile.NamedTemporaryFile("w", suffix=".mg5", delete=False) as f:
         f.write("\n".join(commands) + "\n")
         script_path = Path(f.name)
+    print(f"    MG5 output -> {log_path}")
     try:
-        result = subprocess.run(
-            [str(MG5_EXECUTABLE), str(script_path)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        with open(log_path, "w") as log:
+            log.write("# MG5 command script:\n# " + "\n# ".join(commands) + "\n\n")
+            log.flush()
+            try:
+                subprocess.run(
+                    [str(MG5_EXECUTABLE), str(script_path)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    timeout=MG5_TIMEOUT_S,
+                    check=True,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(
+                    f"MG5 did not finish within {MG5_TIMEOUT_S / 60:.0f} min; see the end of {log_path}"
+                ) from exc
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(f"MG5 exited with status {exc.returncode}; see {log_path}") from exc
     finally:
         script_path.unlink(missing_ok=True)
-    return result.stdout
+    return log_path.read_text()
 
 
 def ensure_process_generated() -> None:
