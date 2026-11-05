@@ -37,14 +37,16 @@ done here.
 |---|---|---|
 | 1 | Does $\sigma = fN/L$ reproduce OPAL's published $\mu^+\mu^-$ cross sections? | **6 of 7 points agree to better than 2%**, five of those to better than 1% |
 | 2 | What about the 7th? | **1993 "peak" is $-7.5\%$ off**, and the miss is isolated to the two *track-based* channels ($\mu\mu$, $\tau\tau$). The calorimeter channels ($qq$, $ee$) are fine, which points at the luminosity rather than a transcription error |
-| 3 | Fit a Breit-Wigner to the clean points, giving $M_Z$, $\Gamma_Z$? | $91.459\,/\,2.799$ GeV, i.e. 272 and 304 MeV above PDG. Good $\chi^2/\mathrm{ndof}$ (0.52/3), wrong answer |
-| 4 | Same fit, with QED initial-state radiation convolved in? | $\mathbf{91.179 \pm 0.012\,/\,2.518 \pm 0.019}$ GeV, within $1\sigma$ and $1.2\sigma$ of PDG. ISR was worth $-280$ MeV on both |
-| 5 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+16.2\sigma\,/\,+9.7\sigma$ off, the ISR fit $-1.1\sigma\,/\,-0.5\sigma$ off. It recovers the generating parameters |
-| 6 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.22824 \pm 0.00384$ from the forward-backward asymmetry (true input 0.23155, $-0.9\sigma$) |
-| 7 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.5\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work. $A_{\mathrm{FB}}$ gives $\sin^2\theta_W^{\text{on-shell}} = 0.2243 \pm 0.0071$ (truth 0.2222, $+0.3\sigma$) |
+| 3 | Fit a Breit-Wigner to the clean points, giving $M_Z$, $\Gamma_Z$? | $91.459\,/\,2.800$ GeV, i.e. 272 and 304 MeV above PDG. Good $\chi^2/\mathrm{ndof}$ (0.46/3), wrong answer |
+| 4 | Same fit, with QED initial-state radiation convolved in? | $\mathbf{M_Z = 91.1865 \pm 0.0120\,(\mathrm{fit}) \pm 0.0073\,(\mathrm{model})}$ GeV, $\mathbf{\Gamma_Z = 2.5287 \pm 0.0197 \pm 0.0117}$ GeV: $-0.1\sigma$ and $+1.7\sigma$ from PDG on the fit error alone. ISR was worth $-273$ MeV on both |
+| 5 | Where does that uncertainty come from? | An [error budget](#error-budget): statistics dominate ($11.6$ / $19.2$ MeV); the luminosity's $0.1\ \mathrm{pb}^{-1}$ rounding, previously ignored, adds $2.6$ MeV on $M_Z$; the radiator form ($7$ / $10$ MeV) and the beam energy spread ($-6$ MeV on $\Gamma_Z$) are the largest model terms |
+| 6 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+17.9\sigma\,/\,+9.6\sigma$ off, the ISR fit $+0.3\sigma\,/\,-0.8\sigma$. Repeated 500 times, the ISR fit's pulls have mean $\approx 0$ and width $\approx 1$ ([pull study](#pull-study)): unbiased, with correct errors |
+| 7 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.23021 \pm 0.00408$ from the forward-backward asymmetry (true input 0.23155, $-0.3\sigma$) |
+| 8 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.5\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work. $A_{\mathrm{FB}}$ gives $\sin^2\theta_W^{\text{on-shell}} = 0.2243 \pm 0.0071$ (truth 0.2222, $+0.3\sigma$) |
+| 9 | What happens with more points, the LEP propagator, and all channels at once? | Six borrowed-$f$ points move the result by $<1$ MeV; the running-width propagator moves $\Gamma_Z$ by $+6.5$ MeV; a joint $qq+\mu\mu+\tau\tau$ fit gives $M_Z = 91.1974 \pm 0.0035$, $\Gamma_Z = 2.5144 \pm 0.0058$ GeV and $\sigma_{\mu\mu}/\sigma_{\tau\tau} = 1.000 \pm 0.006$ -- a fit error now **below** the model systematics ([section 4](#4-extensions)) |
 
-Rows 3 and 4 are the physics result. Rows 5 to 7 are the evidence that row 4
-is not a coincidence.
+Rows 3 to 5 are the physics result. Rows 6 to 8 are the evidence that row 4
+is not a coincidence. Row 9 is where the next limitation sits.
 
 ---
 
@@ -52,17 +54,22 @@ is not a coincidence.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # or requirements.txt without pytest/Jupyter
 
-python src/compute_cross_section.py   # real OPAL data: rows 1-4 above
-python src/simulate_mumu.py           # toy-MC closure test: rows 5-6
-python src/simulate_mumu_mg5.py       # generator-level closure: row 7 (needs MadGraph5)
+python -m pytest                        # 29 regression tests, ~5 s
+python src/compute_cross_section.py     # real OPAL data: rows 1-5 above
+python src/simulate_mumu.py             # toy-MC closure test: rows 6-7
+python src/pull_study.py                # 500 repeated toys, ~8 min: row 6
+python src/extended_fits.py             # more points, LEP lineshapes, joint fit: row 9
+python src/simulate_mumu_mg5.py         # generator-level closure: row 8 (needs MadGraph5)
+python src/simulate_mumu_mg5.py --isr   # same, with MG5's ISR on (MG5 >= 3.2, not yet run)
 ```
 
 Each script prints to stdout and writes tables and plots to `data/processed/`
 (gitignored). The toy MC is seeded, so `simulate_mumu.py` reproduces the
-numbers quoted here exactly. Only the third needs anything beyond
-`requirements.txt`.
+numbers quoted here exactly. Only the MadGraph5 script needs anything beyond
+`requirements.txt`. The tests and the first two scripts run in CI
+(`.github/workflows/tests.yml`).
 
 ---
 
@@ -280,11 +287,15 @@ exactly: radiation moves cross section to lower energy without creating or
 destroying it. At the Z, $\beta = 0.1077$, so $x^{\beta-1} = x^{-0.89}$
 diverges as $x \to 0$ -- arbitrarily soft photons -- but integrably.
 
-**The code uses a simplified form**, $\beta x^{\beta-1}(1 - x/2)$, which drops
-the soft+virtual factor and applies the hard correction multiplicatively. It
-integrates to $0.951$ rather than 1. The normalization is absorbed by the free
-$\sigma_{\mathrm{peak}}$; the shape difference is not, and moves the fitted
-$M_Z$ by $+7$ MeV and $\Gamma_Z$ by $+10$ MeV (see Caveats).
+This is the form the code uses (`qed_radiator_full`, with a test that it
+integrates to 1). Until 2026-11 it used a simplified form,
+$\beta x^{\beta-1}(1 - x/2)$, which drops the soft+virtual factor, applies the
+hard correction multiplicatively and integrates to $0.951$. The normalization
+was absorbed by the free $\sigma_{\mathrm{peak}}$; the shape difference was
+not, and switching moved the fitted $M_Z$ by $+7.1$ MeV and $\Gamma_Z$ by
+$+10.1$ MeV. The old form is kept as `qed_radiator_simplified`, the script
+prints both fits, and the difference is carried as the radiator-model term of
+the error budget.
 
 Two practical consequences:
 
@@ -361,22 +372,69 @@ passes:
 
 | Fit | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | $\sigma_{\mathrm{peak}}$ (nb) |
 |---|---|---|---|---|
-| All 7 points, no ISR | 76.33/4 | $91.4630 \pm 0.0103$ | $2.8289 \pm 0.0216$ | $1.5002 \pm 0.0067$ |
-| 6 clean points, no ISR | 0.52/3 | $91.4594 \pm 0.0103$ | $2.7992 \pm 0.0214$ | $1.5204 \pm 0.0071$ |
-| 6 clean points, ISR-convolved | 1.78/3 | $\mathbf{91.1794 \pm 0.0118}$ | $\mathbf{2.5181 \pm 0.0192}$ | $2.1651 \pm 0.0095$ |
+| All 7 points, no ISR | 69.11/4 | $91.4627 \pm 0.0106$ | $2.8275 \pm 0.0221$ | $1.5012 \pm 0.0069$ |
+| 6 clean points, no ISR | 0.46/3 | $91.4594 \pm 0.0105$ | $2.7995 \pm 0.0218$ | $1.5202 \pm 0.0073$ |
+| 6 clean points, ISR-convolved (full radiator) | 1.42/3 | $\mathbf{91.1865 \pm 0.0120}$ | $\mathbf{2.5287 \pm 0.0197}$ | $2.0105 \pm 0.0089$ |
+| same, simplified radiator (pre-2026-11 result) | 1.49/3 | $91.1794 \pm 0.0121$ | $2.5186 \pm 0.0188$ | $2.1645 \pm 0.0091$ |
 | *PDG* | | *$91.1876 \pm 0.0021$* | *$2.4955 \pm 0.0023$* | |
 
-The 0.52/3 in the middle row is a warning, not a success: three fit parameters
+The 0.46/3 in the second row is a warning, not a success: three fit parameters
 against only three distinct $\sqrt{s}$ clusters is an almost-exact fit by
 construction. A good $\chi^2$ hid a 272 MeV bias.
 
+The errors here include the Poisson error on $N$, the correction-factor
+systematic, and the rounding of $L$ (next paragraph); they are a few percent
+larger than the pre-2026-11 numbers for that reason. With the full radiator
+the fitted $\sigma_{\mathrm{peak}}$ is $2.01$ nb, the LEP value, instead of
+the $2.17$ nb the simplified radiator needed to compensate its $0.951$
+normalization.
+
 ### The ISR correction
 
-The third row convolves the Breit-Wigner with the simplified QED radiator
-described in section 0.5, integrated numerically with `scipy.integrate.quad`.
-It is a truncated leading-log treatment, not the ZFITTER-level radiator LEP itself
-used: enough to get the direction and rough size of the effect out of six
-points, not enough for LEP precision.
+The third row convolves the Breit-Wigner with the $\mathcal{O}(\alpha)$
+leading-log radiator of section 0.5, integrated numerically with
+`scipy.integrate.quad`. It is still not the ZFITTER-level
+$\mathcal{O}(\alpha^2)$ radiator LEP itself used: enough to get the
+direction and size of the effect out of six points, not enough for LEP
+precision.
+
+<a id="error-budget"></a>
+### Error budget
+
+`error_budget()` refits the six clean points with each uncertainty switched
+on in turn, then with the alternatives a different analyst might defensibly
+choose. All entries in MeV:
+
+| Source | Kind | $\Delta M_Z$ | $\Delta\Gamma_Z$ |
+|---|---|---|---|
+| Statistical (Poisson on $N$) | propagated | 11.6 | 19.2 |
+| $+$ rounding of $L$ to $0.1\ \mathrm{pb}^{-1}$ in Table 1 | propagated | 2.6 | 0.0 |
+| $+$ correction-factor systematic, uncorrelated | propagated | 1.5 | 5.7 |
+| $f$ systematic fully correlated within a year (covariance fit) | shift / error | $-0.0$ / 11.9 | $-0.2$ / 19.5 |
+| Radiator form (full $-$ simplified, section 0.5) | model | 7.1 | 10.1 |
+| Beam energy spread (Gaussian, rms from OPAL's own tables) | model | $-0.2$ | $-5.9$ |
+| LEP energy calibration (LEP EWWG, $\times\, dM_Z/dE = 1.00$) | external | 1.7 | 1.2 |
+
+$$M_Z = 91.1864 \pm 0.0119\ (\mathrm{fit}) \pm 0.0073\ (\mathrm{model})\ \mathrm{GeV}, \qquad \Gamma_Z = 2.5285 \pm 0.0195\ (\mathrm{fit}) \pm 0.0117\ (\mathrm{model})\ \mathrm{GeV}$$
+
+Three things this table says that the single fit did not:
+
+- **The luminosity rounding matters.** Table 1 quotes $L$ to one decimal.
+  At the 1995 peak point ($L = 4.6\ \mathrm{pb}^{-1}$) the implied uniform
+  error, $0.1/\sqrt{12} = 0.029\ \mathrm{pb}^{-1}$, is $0.6\%$ of the cross
+  section -- the same size as its Poisson error. It was not in the earlier
+  error bars.
+- **Correlating $f$ within a year changes nothing**, because the $f$
+  systematic is a normalization within each year's three points and is
+  absorbed by $\sigma_{\mathrm{peak}}$. That it does nothing is itself the
+  check.
+- **The model terms are already two-thirds of the fit error.** Any gain in
+  statistics (section 4) will run into them, and the leading one, the
+  radiator, needs the $\mathcal{O}(\alpha^2)$ terms to shrink.
+
+The energy-calibration row uses the LEP Electroweak Working Group's numbers
+(Phys. Rept. 427 (2006) 257) rather than anything derived here, scaled by
+the sensitivity $dM_Z/dE$ measured by shifting all six points together.
 
 </details>
 
@@ -420,14 +478,51 @@ return what went in.
 
 | Fit | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | pull vs. **true input** |
 |---|---|---|---|---|
-| Naive (no ISR) | 71.52/10 | $91.4220 \pm 0.0145$ | $2.9121 \pm 0.0430$ | $\mathbf{+16.2\sigma\,/\,+9.7\sigma}$ |
-| ISR-convolved | 5.69/10 | $91.1718 \pm 0.0144$ | $2.4750 \pm 0.0403$ | $\mathbf{-1.10\sigma\,/\,-0.51\sigma}$ |
+| Naive (no ISR) | 75.56/10 | $91.4389 \pm 0.0141$ | $2.8838 \pm 0.0406$ | $\mathbf{+17.9\sigma\,/\,+9.6\sigma}$ |
+| ISR-convolved | 5.39/10 | $91.1917 \pm 0.0140$ | $2.4636 \pm 0.0386$ | $\mathbf{+0.29\sigma\,/\,-0.83\sigma}$ |
 
 With 13 well-separated points instead of 3 clusters, the missing-ISR bias can
 no longer hide inside a flattering $\chi^2/\mathrm{ndof}$ as it nearly did on
 the real data; it shows up as an outright bad fit. And the same ISR treatment
 that only got the real-data fit within $\sim 1\sigma$ of PDG here recovers the
-generating parameters well inside its own statistical uncertainty.
+generating parameters well inside its own statistical uncertainty. (Numbers
+changed on 2026-11-05 with the switch to the full radiator, which also
+generates the toy sample; the conclusion did not.)
+
+<a id="pull-study"></a>
+### One toy is an anecdote: 500 of them
+
+A single seed can only say "within $1\sigma$ this time". `pull_study.py`
+repeats the whole toy (new Poisson counts, new angles, same acceptance
+correction, same fits) 500 times and histograms the pull
+$(\mathrm{fit} - \mathrm{truth})/\sigma_{\mathrm{fit}}$. An unbiased fit with
+correctly estimated errors gives mean 0 and width 1.
+
+<p align="center">
+  <img src="figures/pull_study.png" width="900"
+       alt="Pull distributions of M_Z, Gamma_Z and sin2(theta_W) over 500 toy experiments">
+</p>
+
+| Fit | Parameter | mean | width | within $1\sigma$ |
+|---|---|---|---|---|
+| naive (control) | $M_Z$ | $+17.44 \pm 0.04$ | $0.96 \pm 0.03$ | 0% |
+| naive (control) | $\Gamma_Z$ | $+10.07 \pm 0.04$ | $0.79 \pm 0.03$ | 0% |
+| **ISR-convolved** | $M_Z$ | $\mathbf{+0.04 \pm 0.04}$ | $\mathbf{0.99 \pm 0.03}$ | 67.8% |
+| **ISR-convolved** | $\Gamma_Z$ | $\mathbf{-0.11 \pm 0.04}$ | $\mathbf{0.97 \pm 0.03}$ | 67.8% |
+| $A_{\mathrm{FB}}$ | $\sin^2\theta_W^{\mathrm{eff}}$ | $-0.08 \pm 0.04$ | $0.90 \pm 0.03$ | 76.0% |
+
+The lineshape fit passes both tests: no bias at the $0.1\sigma$ level and
+error bars that mean what they say. The $A_{\mathrm{FB}}$ fit is unbiased but
+its pull distribution is $10\%$ too narrow and visibly asymmetric, cut off
+near $+1.6$. That is not a bug in the fit: $A_{\mathrm{FB}}$ depends on
+$\sin^2\theta_W$ only through $v^2 = (2\sin^2\theta_W - \tfrac12)^2$, whose
+derivative vanishes at $\sin^2\theta_W = 0.25$. Upward fluctuations push the
+fit toward that flat direction, where the Hesse error grows faster than the
+deviation and the pull saturates. The symmetric parabolic error is therefore
+an overestimate on the high side; MINOS (asymmetric) errors, or fitting $v^2$
+directly, would fix the width. Left as a documented feature rather than
+patched, because it is exactly the kind of thing a single-toy closure test
+cannot see.
 
 ### Second observable: forward-backward asymmetry
 
@@ -459,9 +554,9 @@ real two-step LEP procedure.
        alt="Forward-backward asymmetry across the Z peak, showing the sign flip">
 </p>
 
-$\chi^2/\mathrm{ndof} = 8.65/12$ and
-$\sin^2\theta_W^{\mathrm{eff}} = 0.22824 \pm 0.00384$ against the true input
-0.23155, a $-0.86\sigma$ pull. The measured points trace the sign flip across
+$\chi^2/\mathrm{ndof} = 18.70/12$ and
+$\sin^2\theta_W^{\mathrm{eff}} = 0.23021 \pm 0.00408$ against the true input
+0.23155, a $-0.33\sigma$ pull. The measured points trace the sign flip across
 the peak, negative below and positive above.
 
 $A_{\mathrm{FB}}$ depends on $\sin^2\theta_W$ only through $v^2$, so the fit
@@ -481,7 +576,7 @@ interference terms was fixed -- see section 3.)
   detector geometry or a realistic efficiency curve.
 - Only leptonic couplings are modeled. A real
   $\sin^2\theta_W^{\mathrm{eff}}$ extraction combined multiple final states at
-  far higher statistics; $-0.86\sigma$ from 13 points at 2 pb<sup>-1</sup> is
+  far higher statistics; $-0.33\sigma$ from 13 points at 2 pb<sup>-1</sup> is
   an ordinary statistical fluctuation, not a precision claim.
 
 </details>
@@ -591,8 +686,18 @@ the acceptance sample takes 1-2 minutes.
   ISR/beamstrahlung, no shower, no detector simulation. A scope choice, not an
   oversight -- the project's answer to referencing a real collider's
   generate/detector/analysis structure without the full Pythia8/Delphes/FastJet
-  chain that hadronic LHC final states need. MadGraph5 $\geq$ 3.2.0 does
-  support ISR/beamstrahlung for lepton colliders, the natural next step.
+  chain that hadronic LHC final states need.
+- **ISR-on mode, written but not yet run.** `--isr` switches on MadGraph5's
+  ($\geq 3.2.0$) leading-log $e^\pm$ structure functions (`lpp = -3/+3`,
+  `pdlabel = isronlyll`), cuts $\sqrt{s'}/\sqrt{s} > 0.9$ through the
+  $\mu^+\mu^-$ invariant mass, truncates the fit's radiator integral at the
+  matching $x_{\max}$, evaluates $\cos\theta$ in the post-radiation $e^+e^-$
+  rest frame (boost tested), and feeds the $A_{\mathrm{FB}}$ fit from the
+  ISR-convolved lineshape. The expected outcome is the mirror of the table
+  above: ISR fit $\approx 0\sigma$, naive fit biased high as on OPAL data.
+  This is the test the toy MC cannot provide (the same radiator generates and
+  fits there), and the one remaining logical gap. It needs a MadGraph5
+  installation, which the environment these changes were made in did not have.
 - The "true" reference curve in the closure plot still uses the
   non-relativistic fixed-width `breit_wigner()` shape (pinned to MG5's own
   precise on-peak cross section) as a stand-in for MG5's fully relativistic
@@ -603,6 +708,107 @@ the acceptance sample takes 1-2 minutes.
   $\frac{4}{3}\,\frac{c}{1 + c^2/3} = 0.974$; fitting that on Asimov data
   moves $\sin^2\theta_W$ by $+0.0003$ ($0.04\sigma$). Negligible here, and
   section 2 has the same effect.
+
+</details>
+
+<details>
+<summary><b>4. Extensions: more points, the LEP propagator, all channels at once</b> (<code>src/extended_fits.py</code>)</summary>
+
+<a id="4-extensions"></a>
+
+Three things the error budget suggested trying, in one script. Each reuses
+the full-radiator ISR convolution and the covariance machinery of section 1.
+
+### 4.1 Borrowing correction factors for six more points
+
+OPAL's $\mu\mu$ correction factor barely depends on energy (1993:
+$1.0922 / 1.0920 / 1.0927$ at peak$-2$ / peak / peak$+2$). So the near-peak
+1993-1995 rows of Table 1 that have no $f$ of their own -- the two prescans
+of 1993 and 1995, and the 1994 peak(c)/(d) sub-periods -- are given their
+year's peak $f$, with half the spread of that year's $f$ values ($\sim 0.03\%$)
+as a "borrowed $f$" systematic.
+
+<p align="center">
+  <img src="figures/mumu_extended_lineshape.png" width="600"
+       alt="mu+mu- lineshape with six borrowed-f points added">
+</p>
+
+| Points | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) |
+|---|---|---|---|
+| 6 with their own $f$ (section 1) | 1.42/3 | $91.1865 \pm 0.0120$ | $2.5287 \pm 0.0197$ |
+| 12, borrowed $f$ included | 4.52/9 | $91.1858 \pm 0.0119$ | $2.5318 \pm 0.0191$ |
+| 10, without the 1993 prescans | 3.13/7 | $91.1863 \pm 0.0120$ | $2.5311 \pm 0.0192$ |
+
+Almost nothing moves, for a reason the table makes visible: every added point
+sits at the peak, where the lineshape constrains $\sigma_{\mathrm{peak}}$, not
+$M_Z$ or $\Gamma_Z$. The off-peak points, which carry the mass and width
+information, remain the same three $\sqrt{s}$ clusters. Two of the added
+points are instructive in another way: 1994 peak(c) is $7.9\%$ below its
+published value, which is exactly its luminosity rounding ($L = 0.4 \pm
+0.029\ \mathrm{pb}^{-1}$), and the 1993 prescans have no published cross
+section to validate against and share the run period of the anomalous 1993
+peak point, hence the third row.
+
+### 4.2 Propagator convention, now measured instead of estimated
+
+Section 0.2 argued the non-relativistic Breit-Wigner and the LEP
+running-width form differ by a $34$ MeV redefinition of $M_Z$ that happens
+to cancel on this dataset. Fitting the alternatives (covariance fit, six
+clean points):
+
+| Lineshape model (all ISR-convolved) | $\chi^2$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | normalization |
+|---|---|---|---|---|
+| non-relativistic BW in $\sqrt{s}$ (baseline) | 1.43 | $91.1864 \pm 0.0119$ | $2.5284 \pm 0.0191$ | $2.011 \pm 0.009$ nb |
+| relativistic, running width $s\Gamma_Z/M_Z$ | 1.61 | $91.1865 \pm 0.0120$ | $2.5349 \pm 0.0197$ | $2.010 \pm 0.009$ nb |
+| improved Born $\gamma + Z + $ interference, fixed width, $s'/s > 0.7225$ | 1.60 | $91.1536 \pm 0.0121$ | $2.5107 \pm 0.0233$ | $1.028 \pm 0.016$ |
+
+The running-width form moves $M_Z$ by $+0.1$ MeV and $\Gamma_Z$ by
+$+6.5$ MeV: the cancellation on $M_Z$ is confirmed, the width shift is new
+and goes into the model error. The third row uses the fixed-width
+$\chi(s)$ of section 0.3 and lands $33$ MeV lower, as section 0.2 says a
+fixed-width convention must. Its normalization is a free overall factor on
+the absolute $G_F$-based prediction, and comes out $1.028 \pm 0.016$: the
+computed cross sections agree with the Standard Model's absolute
+normalization to $3\%$ ($1.7\sigma$), with no PDG input. The $s'/s$ cut
+in that row is what OPAL's leptonic cross-section definition uses as far as
+the author recalls; it could not be re-checked against the paper from the
+environment these changes were made in and is flagged in ROADMAP.md.
+
+### 4.3 Joint fit of $qq$, $\mu\mu$ and $\tau\tau$
+
+Common $M_Z$ and $\Gamma_Z$, one free peak cross section per channel, 19
+points (the anomalous 1993 peak dropped for the two track-based channels
+only). The covariance shares the luminosity rounding between channels at
+the same point and the $f$ systematic within a channel-year. $ee$ is left
+out: its $t$-channel contribution is not a Breit-Wigner.
+
+<p align="center">
+  <img src="figures/joint_fit.png" width="900"
+       alt="Joint ISR-convolved fit to the qq, mumu and tautau cross sections">
+</p>
+
+| | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | $\sigma^0_{\mathrm{had}}$ (nb) | $R_\ell$ | $\sigma_{\mu\mu}/\sigma_{\tau\tau}$ |
+|---|---|---|---|---|---|---|
+| joint fit | 13.31/14 | $91.1976 \pm 0.0035$ | $2.5203 \pm 0.0058$ | $41.38 \pm 0.05$ | $20.55 \pm 0.06$ | $1.0001 \pm 0.0060$ |
+| $+$ beam energy spread | 13.33/14 | $91.1974 \pm 0.0035$ | $2.5144 \pm 0.0058$ | $41.46 \pm 0.05$ | $20.55 \pm 0.06$ | $1.0001 \pm 0.0060$ |
+| *PDG* | | *$91.1876 \pm 0.0021$* | *$2.4955 \pm 0.0023$* | *$41.481 \pm 0.033$* | *$20.767 \pm 0.025$* | *1* |
+
+The hadronic channel, with $30$ nb at the peak against $1.5$ nb for muons,
+shrinks the fit error on $M_Z$ from $12$ to $3.5$ MeV and on $\Gamma_Z$ from
+$20$ to $6$ MeV, and the $\chi^2$ says the three channels are consistent
+with one resonance. Lepton universality comes out at
+$\sigma_{\mu\mu}/\sigma_{\tau\tau} = 1.000 \pm 0.006$, and
+$\sigma^0_{\mathrm{had}}$ agrees with PDG once the beam spread is in.
+
+But $M_Z$ is now $+2.8\sigma$ and $\Gamma_Z$ $+3.3\sigma$ from PDG, and
+$R_\ell$ is $1\%$ low. These are not the data: the fit error has dropped
+below the model terms of the error budget (radiator form $7 / 10$ MeV,
+propagator $0 / 6.5$ MeV, beam spread $0 / 6$ MeV, and the
+$\mathcal{O}(\alpha^2)$ radiator terms not modelled at all). The joint fit
+is the point where this analysis stops being statistics-limited and starts
+being model-limited, which is what a real LEP analysis spends most of its
+effort on. The next improvement is an $\mathcal{O}(\alpha^2)$ radiator,
+not more data.
 
 </details>
 
@@ -625,59 +831,53 @@ page-checked against the PDF.
 
 ```
 src/
-  compute_cross_section.py   1. real OPAL data: compute -> validate -> fit
+  compute_cross_section.py   1. real OPAL data: compute -> validate -> fit -> error budget
   simulate_mumu.py           2. toy-MC closure test + A_FB
-  simulate_mumu_mg5.py       3. generator-level closure test (MadGraph5)
+  pull_study.py              2. the same toy repeated 500 times: bias and coverage
+  simulate_mumu_mg5.py       3. generator-level closure test (MadGraph5), --isr mode
+  extended_fits.py           4. borrowed-f points, LEP lineshape models, joint channel fit
+tests/                          pytest regression suite (physics identities, Asimov closures, data)
 data/raw/                       hand-transcribed OPAL tables (tracked)
 data/processed/                 script output: tables and plots (gitignored)
 figures/                        the plots this README embeds (tracked)
+ROADMAP.md                      what was improved, what is still open
 ```
 
 ## Caveats and next steps
 
 Per-script limitations are inside each section above. Project-wide:
 
-- **The ISR radiator is a truncated leading-log approximation**: no
-  multi-photon exponentiation beyond leading log, no exact
-  $\mathcal{O}(\alpha^2)$ terms -- and the code uses a simplified form of even
-  the $\mathcal{O}(\alpha)$ radiator (section 0.5). Switching to the full
-  $\mathcal{O}(\alpha)$ leading-log radiator moves $M_Z$ by $+7$ MeV and
-  $\Gamma_Z$ by $+10$ MeV, the largest model effect identified so far and
-  about $0.6\sigma$ of the statistical error. Enough to show the effect exists
-  and roughly how large it is; not enough to claim LEP-level precision from six
-  points.
-- **Only 3 distinct energy points constrain the real-data fit**
-  (peak$-2$, peak, peak$+2$). The other points in Table 1 have no published
-  correction factors, so no trustworthy cross section can be computed from
-  them. More points would make a good $\chi^2/\mathrm{ndof}$ mean something
-  stronger than "3 parameters matched 3 clusters".
-- **Only $\mu^+\mu^-$ gets the full compute, validate, fit pipeline**; $qq$,
-  $ee$ and $\tau\tau$ are used only for the cross-channel consistency check.
-- **The lineshape model omits photon exchange and $\gamma/Z$ interference.**
-  For the muon channel both are small. Refitting one term at a time (ISR
-  included, $\sqrt{s'}/\sqrt{s} > 0.9$) moves $M_Z$ by $+3.5$ MeV for photon
-  exchange and $-1.5$ MeV for the interference, which enters the total cross
-  section only through $2v^2 \approx 0.003$ (section 0.3). An earlier version
-  of this README attributed a $\sim -30$ MeV shift to these terms; that shift
-  was the mass-definition change in the next bullet. Including the photon term
-  does make the ISR integral depend on OPAL's own $\sqrt{s'}$ cut (radiative
-  return, section 0.5).
-- **The propagator convention is not the LEP one.** The fit uses a
-  non-relativistic Breit-Wigner in $\sqrt{s}$; published $M_Z$ values come from
-  the relativistic running-width form, and the two mass definitions differ by
-  $\Gamma_Z^2/2M_Z \approx 34$ MeV (section 0.2). On this dataset the net
-  effect of switching happens to be small ($\sim 5$ MeV, and under $1$ MeV once
-  ISR is included) because the numerator and denominator differences cancel,
-  but that cancellation is a coincidence of this parametrization, not a reason
-  the convention does not matter. Mixing conventions is the real hazard: a
-  fixed-width fit, such as one using the $\chi(s)$ of section 0.3, returns a
-  mass about 34 MeV below the running-width one -- which is what the earlier
-  "$-30$ MeV" actually measured.
-- **Natural extensions**: a joint multi-channel fit for a more realistic
-  precision-electroweak treatment; enabling MG5's own ISR/beamstrahlung so
-  there is a genuinely ISR-affected generator truth to test the ISR-convolved
-  fit against; a Pythia8/Delphes-style shower and detector-smearing step for a
-  detector-level closure test.
+- **The ISR radiator is $\mathcal{O}(\alpha)$ leading-log**: soft photons
+  exponentiated, one hard photon, no $\mathcal{O}(\alpha^2)$ terms, not the
+  ZFITTER/TOPAZ0 level LEP used. The $\mathcal{O}(\alpha)$ form is now the
+  complete one (section 0.5); the $7 / 10$ MeV it moved the result by is the
+  size of the term that was missing, and the next order is expected to be
+  smaller but not negligible against the joint fit's $3.5 / 6$ MeV. This is
+  the leading model systematic and the first thing to improve.
+- **Only 3 distinct off-peak energy clusters constrain the real-data fits**
+  (peak$-2$, peak, peak$+2$). The borrowed-$f$ points of section 4.1 add
+  statistics only at the peak, and the 1990-1992 points have no correction
+  factors from the same detector configuration to borrow.
+- **Model omissions still present in the baseline fit**: photon exchange and
+  $\gamma/Z$ interference ($+3.5$ and $-1.5$ MeV on $M_Z$, section 4.2's
+  third row now fits them explicitly), and the running-width propagator
+  ($+6.5$ MeV on $\Gamma_Z$, section 4.2). Both are quantified rather than
+  fixed in the baseline so that section 1's result stays comparable with the
+  earlier versions; the error budget carries them.
+- **The $A_{\mathrm{FB}}$ error is parabolic in a non-parabolic parameter.**
+  The pull study shows its Hesse error is $10\%$ too large on average and
+  asymmetric. MINOS errors or a fit in $v^2$ would cure it.
+- **The joint fit is model-limited.** Its $2.8\sigma$ / $3.3\sigma$ pulls
+  from PDG are the model terms above showing through a fit error that has
+  become smaller than they are, not a disagreement with the data.
+- **Not yet run**: the MadGraph5 ISR-on closure test (section 3), which
+  needs an MG5 installation; it is the one piece of evidence still missing
+  for the ISR correction, since the toy MC generates and fits with the same
+  radiator.
+- **Natural extensions**: an $\mathcal{O}(\alpha^2)$ radiator; MINOS errors
+  for $A_{\mathrm{FB}}$; a joint fit with the $\gamma/Z$ model and the
+  $t$-channel-subtracted $ee$ channel; a Pythia8/Delphes-style shower and
+  detector-smearing step for a detector-level closure test.
 
 ## Reference
 
