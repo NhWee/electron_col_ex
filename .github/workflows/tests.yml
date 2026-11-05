@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest
+      # The real-data script is fast; the toy MC is seeded and should
+      # reproduce the README numbers. MadGraph5 is not available in CI.
+      - run: python src/compute_cross_section.py
+      - run: python src/simulate_mumu.py

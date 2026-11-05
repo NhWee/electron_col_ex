@@ -164,22 +164,52 @@ def isr_beta(sqrt_s: float) -> float:
     return (2 * ALPHA_QED / np.pi) * (np.log(s / M_ELECTRON_GEV**2) - 1)
 
 
-def qed_radiator(x: float, beta: float) -> float:
-    """Probability density for the e+e- system to radiate away a fraction x
-    of sqrt(s) via initial-state photon(s) before annihilating, to O(alpha)
-    leading-log with the soft/virtual part exponentiated (integrable at
-    x -> 0 despite beta < 1). This is a truncated leading-log treatment, not
-    the full ZFITTER-level radiator -- adequate to see the direction and
-    rough size of the ISR bias, not to match PDG to MeV precision from 6
-    points."""
+def qed_radiator_simplified(x: float, beta: float) -> float:
+    """The radiator this project used until 2026-11: the soft-photon power
+    law with the O(alpha) hard-photon correction applied multiplicatively
+    and the soft+virtual (1 + 3/4 beta) factor dropped. It integrates to
+    0.951 rather than 1. Kept so the README's model-systematic comparison
+    (simplified vs full) stays reproducible."""
     return beta * x ** (beta - 1) * (1 - x / 2)
 
 
-def breit_wigner_isr(sqrt_s: np.ndarray, sigma_peak: float, mZ: float, gammaZ: float) -> np.ndarray:
-    """sigma_born(s) convolved with the ISR radiator: sigma_obs(sqrt_s) =
-    integral_0^1 H(x) * sigma_born(sqrt_s * sqrt(1-x)) dx. Radiating a
-    fraction x always lowers the effective collision energy, which is what
-    skews the observed lineshape relative to the true resonance."""
+def qed_radiator_full(x: float, beta: float) -> float:
+    """O(alpha) leading-log structure-function radiator (Kuraev-Fadin /
+    Nicrosini-Trentadue form):
+
+        H(x) = beta x^(beta-1) (1 + 3/4 beta) - beta (1 - x/2)
+
+    The first term is the exponentiated soft+virtual piece, the second the
+    O(alpha) hard-photon term; together they follow from the plus-prescribed
+    splitting function and integrate to exactly 1 (tested in tests/). Still
+    not the ZFITTER-level O(alpha^2) radiator LEP used."""
+    return beta * x ** (beta - 1) * (1 + 0.75 * beta) - beta * (1 - x / 2)
+
+
+RADIATORS = {"full": qed_radiator_full, "simplified": qed_radiator_simplified}
+
+# Which radiator breit_wigner_isr() uses. "full" is the default; the fit
+# helpers take a `radiator=` argument that switches it for one call.
+ISR_RADIATOR = "full"
+
+# Upper limit of the radiative-energy-fraction integral. 1 for a pure
+# Breit-Wigner (the resonance suppresses the tail); lower it to emulate a
+# sqrt(s')/sqrt(s) cut when the born model has a 1/s photon-exchange term.
+ISR_X_MAX = 1.0
+
+
+def qed_radiator(x: float, beta: float) -> float:
+    """Dispatch to the radiator selected by ISR_RADIATOR."""
+    return RADIATORS[ISR_RADIATOR](x, beta)
+
+
+def convolve_isr(born, sqrt_s: np.ndarray, *params, x_max: float | None = None) -> np.ndarray:
+    """sigma_obs(sqrt_s) = int_0^x_max H(x) born(sqrt_s * sqrt(1-x), *params) dx.
+    Radiating a fraction x always lowers the effective collision energy,
+    which is what skews the observed lineshape relative to the true
+    resonance. `born` is any sigma(sqrt_s, *params) model."""
+    if x_max is None:
+        x_max = ISR_X_MAX
     sqrt_s = np.atleast_1d(np.asarray(sqrt_s, dtype=float))
     observed = np.empty_like(sqrt_s)
     for i, s0 in enumerate(sqrt_s):
@@ -187,22 +217,49 @@ def breit_wigner_isr(sqrt_s: np.ndarray, sigma_peak: float, mZ: float, gammaZ: f
 
         def integrand(x: float, s0: float = s0, beta: float = beta) -> float:
             sqrt_s_prime = s0 * np.sqrt(1 - x)
-            return qed_radiator(x, beta) * breit_wigner(sqrt_s_prime, sigma_peak, mZ, gammaZ)
+            return qed_radiator(x, beta) * born(sqrt_s_prime, *params)
 
-        observed[i], _ = quad(integrand, 0, 1 - 1e-9, limit=200)
+        observed[i], _ = quad(integrand, 0, min(x_max, 1 - 1e-9), limit=200)
     return observed
 
 
-def fit_breit_wigner_isr(comparison: pd.DataFrame) -> Minuit:
+def breit_wigner_isr(sqrt_s: np.ndarray, sigma_peak: float, mZ: float, gammaZ: float) -> np.ndarray:
+    """Non-relativistic Breit-Wigner convolved with the ISR radiator."""
+    return convolve_isr(breit_wigner, sqrt_s, sigma_peak, mZ, gammaZ)
+
+
+class _radiator:
+    """Context manager: temporarily select a radiator form."""
+
+    def __init__(self, name: str | None):
+        self.name = name
+
+    def __enter__(self):
+        global ISR_RADIATOR
+        self.previous = ISR_RADIATOR
+        if self.name is not None:
+            if self.name not in RADIATORS:
+                raise ValueError(f"unknown radiator {self.name!r}; choose from {list(RADIATORS)}")
+            ISR_RADIATOR = self.name
+
+    def __exit__(self, *exc):
+        global ISR_RADIATOR
+        ISR_RADIATOR = self.previous
+
+
+def fit_breit_wigner_isr(comparison: pd.DataFrame, radiator: str | None = None) -> Minuit:
+    """Same as fit_breit_wigner but with the ISR-convolved model. `radiator`
+    selects "full" or "simplified" for this call only (default: ISR_RADIATOR)."""
     least_squares = LeastSquares(
         comparison["sqrt_s_GeV"].to_numpy(),
         comparison["sigma_computed_nb"].to_numpy(),
         comparison["sigma_computed_err_nb"].to_numpy(),
         breit_wigner_isr,
     )
-    minuit = Minuit(least_squares, sigma_peak=1.5, mZ=91.19, gammaZ=2.5)
-    minuit.migrad()
-    minuit.hesse()
+    with _radiator(radiator):
+        minuit = Minuit(least_squares, sigma_peak=1.5, mZ=91.19, gammaZ=2.5)
+        minuit.migrad()
+        minuit.hesse()
     return minuit
 
 
@@ -336,7 +393,7 @@ def main() -> None:
         "  almost-exact fit, not a strong overconstraint."
     )
 
-    print("\n=== Same clean points, fit with the ISR-convolved Breit-Wigner ===")
+    print(f"\n=== Same clean points, fit with the ISR-convolved Breit-Wigner ({ISR_RADIATOR} radiator) ===")
     fit_isr = fit_breit_wigner_isr(clean)
     print_fit_result(fit_isr)
     shift_mZ = (fit_isr.values["mZ"] - fit_clean.values["mZ"]) * 1000
@@ -347,10 +404,20 @@ def main() -> None:
     print(f"  pull vs. PDG: mZ {pull_mZ:+.2f} sigma, gammaZ {pull_gammaZ:+.2f} sigma")
     print(
         "  the ~280 MeV ISR shift lands mZ within 1 sigma of PDG and gammaZ\n"
-        "  within ~1.2 sigma -- convolving in even a truncated leading-log\n"
-        "  radiator removes most of the bias the naive fit had. Still only 6\n"
-        "  points / 3 distinct sqrt_s clusters, so treat the fit uncertainties\n"
+        "  within ~1.2 sigma -- convolving in even a leading-log radiator\n"
+        "  removes most of the bias the naive fit had. Still only 6 points /\n"
+        "  3 distinct sqrt_s clusters, so treat the fit uncertainties\n"
         "  themselves as optimistic, not as a real LEP-precision measurement."
+    )
+
+    other = "simplified" if ISR_RADIATOR == "full" else "full"
+    fit_isr_other = fit_breit_wigner_isr(clean, radiator=other)
+    print(f"\n=== Radiator model check: same fit with the {other} radiator ===")
+    print_fit_result(fit_isr_other)
+    print(
+        f"  {ISR_RADIATOR} - {other}: mZ {(fit_isr.values['mZ'] - fit_isr_other.values['mZ']) * 1000:+.1f} MeV, "
+        f"gammaZ {(fit_isr.values['gammaZ'] - fit_isr_other.values['gammaZ']) * 1000:+.1f} MeV "
+        "(entered as the radiator-model systematic in the error budget)"
     )
 
     plot(
