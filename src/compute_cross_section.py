@@ -72,6 +72,17 @@ PDG_GAMMAZ_ERR_GEV = 0.0023
 ALPHA_QED = 1 / 137.035999
 M_ELECTRON_GEV = 0.000511
 
+# Table 1 lists L to one decimal in pb^-1: a uniform rounding error.
+L_ROUNDING_ERR_PBINV = 0.1 / np.sqrt(12)
+
+# LEP centre-of-mass energy calibration (1993-1995 resonant depolarisation),
+# quoted as its effect on the combined LEP M_Z and Gamma_Z by the LEP
+# Electroweak Working Group, Phys. Rept. 427 (2006) 257, Table 2.3. These
+# are external numbers, not derived here; the error budget uses them
+# together with the energy-scale sensitivity measured by refitting.
+LEP_ENERGY_SCALE_MZ_MEV = 1.7
+LEP_ENERGY_SCALE_GAMMAZ_MEV = 1.2
+
 
 def load_counts() -> pd.DataFrame:
     return pd.read_csv(DATA_RAW / "opal_zedometry_table1_event_counts.csv")
@@ -96,22 +107,39 @@ def select_corrected_points(counts: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_cross_section(counts: pd.DataFrame, corrections: pd.DataFrame, n_col: str) -> pd.DataFrame:
-    """sigma = f * N / L, with Poisson statistical error on N and the
-    correction factor's own systematic error propagated via `uncertainties`."""
+    """sigma = f * N / L with three error sources kept separately:
+
+    - stat:   Poisson on N
+    - f_syst: the correction factor's own systematic (correlated between
+              energy points of the same year, see build_covariance)
+    - L_round: Table 1 quotes L to 0.1 pb^-1, so the value we read carries a
+              uniform rounding error of width 0.1, i.e. sigma = 0.1/sqrt(12)
+
+    `sigma_computed_err_nb` is their quadrature sum and is what the simple
+    (diagonal) fits use."""
     merged = counts.merge(corrections, left_on=["year", "corr_sample"], right_on=["year", "sample"], suffixes=("", "_corr"))
 
-    sigma_nb = []
-    sigma_err_nb = []
+    rows = []
     for _, row in merged.iterrows():
-        n = ufloat(row[n_col], row[n_col] ** 0.5)
-        f = ufloat(row["total_correction_f"], row["total_correction_f"] * row["total_df_over_f_pct"] / 100)
-        sigma = f * n / row["L_pbinv"] / 1000  # pb -> nb
-        sigma_nb.append(sigma.nominal_value)
-        sigma_err_nb.append(sigma.std_dev)
+        n_val, f_val, l_val = row[n_col], row["total_correction_f"], row["L_pbinv"]
+        f_err = f_val * row["total_df_over_f_pct"] / 100
+        sigma = f_val * n_val / l_val / 1000  # pb -> nb
+        stat = sigma * np.sqrt(n_val) / n_val
+        f_syst = sigma * f_err / f_val
+        l_round = sigma * L_ROUNDING_ERR_PBINV / l_val
+        rows.append((sigma, stat, f_syst, l_round, np.sqrt(stat**2 + f_syst**2 + l_round**2)))
 
-    merged["sigma_computed_nb"] = sigma_nb
-    merged["sigma_computed_err_nb"] = sigma_err_nb
+    (
+        merged["sigma_computed_nb"],
+        merged["sigma_stat_err_nb"],
+        merged["sigma_fsyst_err_nb"],
+        merged["sigma_lround_err_nb"],
+        merged["sigma_computed_err_nb"],
+    ) = map(list, zip(*rows))
     return merged
+
+
+ERROR_COLUMNS = ["sigma_computed_err_nb", "sigma_stat_err_nb", "sigma_fsyst_err_nb", "sigma_lround_err_nb"]
 
 
 def validate_against_published(computed: pd.DataFrame, published: pd.DataFrame, n_col: str) -> pd.DataFrame:
@@ -120,7 +148,7 @@ def validate_against_published(computed: pd.DataFrame, published: pd.DataFrame, 
         (comparison["sigma_computed_nb"] - comparison["xsec_corrected_nb"]) / comparison["xsec_corrected_nb"] * 100
     )
     return comparison[
-        ["year", "sample", "sqrt_s_GeV", n_col, "L_pbinv", "sigma_computed_nb", "sigma_computed_err_nb", "xsec_corrected_nb", "diff_pct"]
+        ["year", "sample", "sqrt_s_GeV", "sqrt_s_rms_GeV", n_col, "L_pbinv", "sigma_computed_nb", *ERROR_COLUMNS, "xsec_corrected_nb", "diff_pct"]
     ].sort_values(["year", "sqrt_s_GeV"])
 
 
@@ -279,6 +307,167 @@ def fit_breit_wigner(comparison: pd.DataFrame) -> Minuit:
     return minuit
 
 
+# --- Error budget ------------------------------------------------------------
+
+
+def build_covariance(comparison: pd.DataFrame, f_correlated: bool = True) -> np.ndarray:
+    """Covariance of the computed cross sections. Poisson and L-rounding
+    errors are independent point to point. The correction-factor systematic
+    is taken as fully correlated between energy points of the same year
+    (same detector, same efficiency determination) and uncorrelated between
+    years; with f_correlated=False it is diagonal, which is what the plain
+    LeastSquares fits assume."""
+    stat = comparison["sigma_stat_err_nb"].to_numpy()
+    lround = comparison["sigma_lround_err_nb"].to_numpy()
+    fsyst = comparison["sigma_fsyst_err_nb"].to_numpy()
+    years = comparison["year"].to_numpy()
+    cov = np.diag(stat**2 + lround**2)
+    if f_correlated:
+        same_year = years[:, None] == years[None, :]
+        cov += np.outer(fsyst, fsyst) * same_year
+    else:
+        cov += np.diag(fsyst**2)
+    return cov
+
+
+def fit_with_covariance(comparison: pd.DataFrame, model, cov: np.ndarray, **start) -> Minuit:
+    """chi2 = r^T V^-1 r with a general covariance V; otherwise identical to
+    the LeastSquares fits (same model, same starting values)."""
+    x = comparison["sqrt_s_GeV"].to_numpy()
+    y = comparison["sigma_computed_nb"].to_numpy()
+    cov_inv = np.linalg.inv(cov)
+
+    def chi2(sigma_peak: float, mZ: float, gammaZ: float) -> float:
+        r = y - model(x, sigma_peak, mZ, gammaZ)
+        return float(r @ cov_inv @ r)
+
+    chi2.errordef = Minuit.LEAST_SQUARES
+    minuit = Minuit(chi2, **{"sigma_peak": 1.5, "mZ": 91.19, "gammaZ": 2.5, **start})
+    minuit.migrad()
+    minuit.hesse()
+    return minuit
+
+
+def with_beam_spread(model, sigma_e: np.ndarray):
+    """Return model smeared by a Gaussian centre-of-mass energy spread of
+    rms sigma_e (one value per fitted point), using 9-point Gauss-Hermite
+    quadrature. LEP's ~55 MeV spread is small against Gamma_Z but not
+    negligible against the ~10 MeV precision aimed at here."""
+    nodes, weights = np.polynomial.hermite.hermgauss(9)
+    sigma_e = np.atleast_1d(np.asarray(sigma_e, dtype=float))
+
+    def smeared(sqrt_s: np.ndarray, *params) -> np.ndarray:
+        sqrt_s = np.atleast_1d(np.asarray(sqrt_s, dtype=float))
+        se = sigma_e if sigma_e.size == sqrt_s.size else np.full_like(sqrt_s, sigma_e.mean())
+        out = np.zeros_like(sqrt_s)
+        for node, weight in zip(nodes, weights):
+            out += weight * model(sqrt_s + np.sqrt(2) * se * node, *params)
+        return out / np.sqrt(np.pi)
+
+    return smeared
+
+
+def _refit_errors(comparison: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Copy of `comparison` whose sigma_computed_err_nb is the quadrature
+    sum of only the named error columns."""
+    out = comparison.copy()
+    out["sigma_computed_err_nb"] = np.sqrt(sum(out[c].to_numpy() ** 2 for c in columns))
+    return out
+
+
+def error_budget(clean: pd.DataFrame, radiator: str | None = None) -> pd.DataFrame:
+    """Decompose the ISR-convolved fit's uncertainty on M_Z and Gamma_Z.
+
+    Rows marked 'input' are propagated through the fit (stat, L rounding,
+    f systematic, f correlation); rows marked 'model' are central-value
+    shifts between two defensible treatments (radiator form, beam energy
+    spread); 'external' is the LEP energy calibration taken from the LEP
+    EWWG, scaled by the measured sensitivity dM_Z/dE."""
+    with _radiator(radiator):
+        rows = []
+
+        def record(label: str, kind: str, fit: Minuit, *, reference: Minuit | None = None) -> Minuit:
+            if reference is None:
+                rows.append(dict(source=label, kind=kind,
+                                 mZ_MeV=fit.errors["mZ"] * 1e3, gammaZ_MeV=fit.errors["gammaZ"] * 1e3,
+                                 mZ_GeV=fit.values["mZ"], gammaZ_GeV=fit.values["gammaZ"], chi2=fit.fval))
+            else:
+                rows.append(dict(source=label, kind=kind,
+                                 mZ_MeV=(fit.values["mZ"] - reference.values["mZ"]) * 1e3,
+                                 gammaZ_MeV=(fit.values["gammaZ"] - reference.values["gammaZ"]) * 1e3,
+                                 mZ_GeV=fit.values["mZ"], gammaZ_GeV=fit.values["gammaZ"], chi2=fit.fval))
+            return fit
+
+        # 1. propagated input errors, added one at a time
+        fit_stat = record("statistical (Poisson on N)", "input",
+                          fit_breit_wigner_isr(_refit_errors(clean, ["sigma_stat_err_nb"])))
+        fit_stat_l = fit_breit_wigner_isr(_refit_errors(clean, ["sigma_stat_err_nb", "sigma_lround_err_nb"]))
+        rows.append(dict(source="+ L rounding (0.1 pb^-1 granularity)", kind="input",
+                         mZ_MeV=np.sqrt(max(fit_stat_l.errors["mZ"] ** 2 - fit_stat.errors["mZ"] ** 2, 0)) * 1e3,
+                         gammaZ_MeV=np.sqrt(max(fit_stat_l.errors["gammaZ"] ** 2 - fit_stat.errors["gammaZ"] ** 2, 0)) * 1e3,
+                         mZ_GeV=fit_stat_l.values["mZ"], gammaZ_GeV=fit_stat_l.values["gammaZ"], chi2=fit_stat_l.fval))
+        fit_diag = fit_breit_wigner_isr(clean)
+        rows.append(dict(source="+ f systematic, uncorrelated (= default fit)", kind="input",
+                         mZ_MeV=np.sqrt(max(fit_diag.errors["mZ"] ** 2 - fit_stat_l.errors["mZ"] ** 2, 0)) * 1e3,
+                         gammaZ_MeV=np.sqrt(max(fit_diag.errors["gammaZ"] ** 2 - fit_stat_l.errors["gammaZ"] ** 2, 0)) * 1e3,
+                         mZ_GeV=fit_diag.values["mZ"], gammaZ_GeV=fit_diag.values["gammaZ"], chi2=fit_diag.fval))
+
+        # 2. f systematic correlated within a year: full covariance fit
+        fit_cov = fit_with_covariance(clean, breit_wigner_isr, build_covariance(clean, f_correlated=True))
+        record("f correlated within year (covariance fit): shift", "input-shift", fit_cov, reference=fit_diag)
+        record("f correlated within year (covariance fit): error", "input", fit_cov)
+
+        # 3. model: radiator form
+        other = "simplified" if ISR_RADIATOR == "full" else "full"
+        record(f"radiator form ({ISR_RADIATOR} - {other})", "model",
+               fit_breit_wigner_isr(clean, radiator=other), reference=fit_diag)
+        rows[-1]["mZ_MeV"] *= -1
+        rows[-1]["gammaZ_MeV"] *= -1
+
+        # 4. model: beam energy spread (rms from OPAL's own Table 10)
+        spread_model = with_beam_spread(breit_wigner_isr, clean["sqrt_s_rms_GeV"].to_numpy())
+        fit_spread = fit_with_covariance(clean, spread_model, build_covariance(clean, f_correlated=False))
+        record("beam energy spread (smeared - unsmeared)", "model", fit_spread, reference=fit_diag)
+
+        # 5. external: energy scale. Measure dM_Z/dE by shifting all points.
+        delta = 0.010  # GeV
+        shifted = clean.copy()
+        shifted["sqrt_s_GeV"] = shifted["sqrt_s_GeV"] + delta
+        fit_shift = fit_breit_wigner_isr(shifted)
+        d_mz = (fit_shift.values["mZ"] - fit_diag.values["mZ"]) / delta
+        d_gz = (fit_shift.values["gammaZ"] - fit_diag.values["gammaZ"]) / delta
+        rows.append(dict(source=f"LEP energy calibration (LEP EWWG; dM_Z/dE={d_mz:.2f}, dG_Z/dE={d_gz:+.2f})",
+                         kind="external", mZ_MeV=LEP_ENERGY_SCALE_MZ_MEV * abs(d_mz),
+                         gammaZ_MeV=LEP_ENERGY_SCALE_GAMMAZ_MEV, mZ_GeV=np.nan, gammaZ_GeV=np.nan, chi2=np.nan))
+
+    budget = pd.DataFrame(rows)
+    syst_rows = budget["kind"].isin(["model", "external"])
+    total_syst_mz = np.sqrt((budget.loc[syst_rows, "mZ_MeV"] ** 2).sum())
+    total_syst_gz = np.sqrt((budget.loc[syst_rows, "gammaZ_MeV"] ** 2).sum())
+    budget.attrs["summary"] = dict(
+        mZ=fit_cov.values["mZ"], mZ_fit=fit_cov.errors["mZ"] * 1e3, mZ_syst=total_syst_mz,
+        gammaZ=fit_cov.values["gammaZ"], gammaZ_fit=fit_cov.errors["gammaZ"] * 1e3, gammaZ_syst=total_syst_gz,
+        mZ_stat=fit_stat.errors["mZ"] * 1e3, gammaZ_stat=fit_stat.errors["gammaZ"] * 1e3,
+    )
+    return budget
+
+
+def print_error_budget(budget: pd.DataFrame) -> None:
+    print(f"{'source':62s} {'kind':12s} {'dM_Z (MeV)':>11s} {'dG_Z (MeV)':>11s}")
+    for _, r in budget.iterrows():
+        print(f"{r['source']:62s} {r['kind']:12s} {r['mZ_MeV']:11.2f} {r['gammaZ_MeV']:11.2f}")
+    s = budget.attrs["summary"]
+    print(
+        f"\n  M_Z     = {s['mZ']:.4f} +/- {s['mZ_fit'] / 1e3:.4f} (fit: stat {s['mZ_stat']:.1f} MeV + f + L) "
+        f"+/- {s['mZ_syst'] / 1e3:.4f} (model + energy scale) GeV"
+    )
+    print(
+        f"  Gamma_Z = {s['gammaZ']:.4f} +/- {s['gammaZ_fit'] / 1e3:.4f} (fit: stat {s['gammaZ_stat']:.1f} MeV + f + L) "
+        f"+/- {s['gammaZ_syst'] / 1e3:.4f} (model + energy scale) GeV"
+    )
+    print("  'input-shift' rows are central-value moves, not added to any total.")
+
+
 def print_fit_result(minuit: Minuit) -> None:
     print(f"chi2/ndof = {minuit.fval:.2f}/{minuit.ndof:.0f}")
     for name, pdg_value, pdg_err in [
@@ -419,6 +608,12 @@ def main() -> None:
         f"gammaZ {(fit_isr.values['gammaZ'] - fit_isr_other.values['gammaZ']) * 1000:+.1f} MeV "
         "(entered as the radiator-model systematic in the error budget)"
     )
+
+    print("\n=== Error budget for the ISR-convolved fit (6 clean points) ===")
+    budget = error_budget(clean)
+    print_error_budget(budget)
+    budget.to_csv(DATA_PROCESSED / "error_budget.csv", index=False)
+    print(f"\nSaved error budget to {DATA_PROCESSED / 'error_budget.csv'}")
 
     plot(
         mumu,
