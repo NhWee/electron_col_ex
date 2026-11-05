@@ -65,6 +65,16 @@ python src/simulate_mumu_mg5.py         # generator-level closure: row 8 (needs 
 python src/simulate_mumu_mg5.py --isr   # same, with MG5's ISR on (MG5 >= 3.2, not yet run)
 ```
 
+Or run everything in order with a banner explaining each step:
+
+```bash
+./run_all.sh                 # ~10 min; N_TOYS=50 ./run_all.sh for a quicker pull study
+```
+
+**New here?** [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) goes through each
+command, what it computes, what appears on screen and how to read it, with
+the expected numbers, common errors, and five one-line experiments to try.
+
 Each script prints to stdout and writes tables and plots to `data/processed/`
 (gitignored). The toy MC is seeded, so `simulate_mumu.py` reproduces the
 numbers quoted here exactly. Only the MadGraph5 script needs anything beyond
@@ -840,6 +850,8 @@ tests/                          pytest regression suite (physics identities, Asi
 data/raw/                       hand-transcribed OPAL tables (tracked)
 data/processed/                 script output: tables and plots (gitignored)
 figures/                        the plots this README embeds (tracked)
+docs/WALKTHROUGH.md             step-by-step guide: what each command does and what to look for
+run_all.sh                      runs every step in order with an explanatory banner
 ROADMAP.md                      what was improved, what is still open
 ```
 
