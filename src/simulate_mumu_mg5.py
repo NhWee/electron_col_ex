@@ -27,8 +27,26 @@ choice (see README), not an oversight.
 Requires a working MadGraph5_aMC@NLO installation (gfortran + gcc), external
 to this repo. Point `MG5_PATH` at your `bin/mg5_aMC` if it isn't at the
 default path below.
+
+    python src/simulate_mumu_mg5.py          # ISR off (the original test)
+    python src/simulate_mumu_mg5.py --isr    # ISR on via MG5's e+e- structure functions
+
+With `--isr` (MadGraph5 >= 3.2.0) the beams are given the leading-log
+electron/positron PDFs (`lpp = -/+3`, `pdlabel = isronlyll`), so the
+generated lineshape is radiatively distorted the way OPAL's data is, and
+the ISR-convolved fit should now be the one that recovers the truth. The
+photon-exchange term makes the radiative-return tail diverge without a cut,
+so a cut sqrt(s')/sqrt(s) > SPRIME_MIN_FRACTION is applied as a minimum
+mu+mu- invariant mass (`mmll`) and the fit's ISR integral is truncated at
+the matching x_max = 1 - SPRIME_MIN_FRACTION^2. cos(theta) is evaluated in
+the post-radiation e+e- rest frame, read from each event's incoming legs.
+
+The --isr path was written without a MadGraph5 installation to test it
+against (2026-11-05); the run_card parameter names follow the 3.5.x
+template and MG5 will refuse unknown names, so a mismatch fails loudly.
 """
 
+import argparse
 import gzip
 import os
 import re
@@ -40,7 +58,8 @@ import numpy as np
 import pandas as pd
 from uncertainties import ufloat
 
-from compute_cross_section import DATA_PROCESSED, breit_wigner, fit_breit_wigner, fit_breit_wigner_isr, print_fit_result
+import compute_cross_section as ccs
+from compute_cross_section import DATA_PROCESSED, breit_wigner, breit_wigner_isr, fit_breit_wigner, fit_breit_wigner_isr, print_fit_result
 from simulate_mumu import SCAN_POINTS_GEV, fit_afb, plot_afb, plot_closure
 
 MG5_EXECUTABLE = Path(
@@ -50,6 +69,9 @@ MG5_EXECUTABLE = Path(
     )
 )
 PROCESS_DIR = DATA_PROCESSED / "mg5_eemumu"
+
+ISR_ON = False  # set by --isr
+SPRIME_MIN_FRACTION = 0.9  # sqrt(s')/sqrt(s) cut used only with ISR on
 
 LUMI_PBINV_MG5 = 0.3  # smaller than simulate_mumu.py's 2.0 pb^-1, to keep each MG5 launch fast
 EVENTS_PER_LAUNCH = 1200  # headroom above the on-peak Poisson mean (~600 at L=0.3 pb^-1)
@@ -133,6 +155,17 @@ def run_mg5_launch(sqrt_s: float, nevents: int, seed: int) -> tuple[Path, float]
     the generated LHE file path and MG5's own VEGAS-integrated cross
     section in pb, parsed from its stdout summary."""
     ebeam = sqrt_s / 2
+    if ISR_ON:
+        # e+ is beam 1 in "generate e+ e- > mu+ mu-"; the sign of lpp follows
+        # the beam particle's charge, as for proton (+1) / antiproton (-1).
+        beam_settings = [
+            "set lpp1 -3",
+            "set lpp2 3",
+            "set pdlabel isronlyll",
+            f"set mmll {SPRIME_MIN_FRACTION * sqrt_s:.4f}",
+        ]
+    else:
+        beam_settings = ["set lpp1 0", "set lpp2 0"]
     stdout = _run_mg5(
         [
             f"launch {PROCESS_DIR}",
@@ -141,8 +174,7 @@ def run_mg5_launch(sqrt_s: float, nevents: int, seed: int) -> tuple[Path, float]
             "done",
             f"set ebeam1 {ebeam}",
             f"set ebeam2 {ebeam}",
-            "set lpp1 0",
-            "set lpp2 0",
+            *beam_settings,
             f"set nevents {nevents}",
             f"set iseed {seed}",
             "done",
@@ -159,12 +191,29 @@ def run_mg5_launch(sqrt_s: float, nevents: int, seed: int) -> tuple[Path, float]
     return lhe_path, sigma_pb
 
 
+def boost_to_rest_frame(p: np.ndarray, p_total: np.ndarray) -> np.ndarray:
+    """Lorentz-boost four-vector p (E, px, py, pz) into the rest frame of
+    p_total. Identity when p_total has no spatial momentum (lpp=0 case)."""
+    m = np.sqrt(max(p_total[0] ** 2 - p_total[1:] @ p_total[1:], 1e-300))
+    beta = p_total[1:] / p_total[0]
+    b2 = beta @ beta
+    if b2 < 1e-20:
+        return p.copy()
+    gamma = p_total[0] / m
+    bp = beta @ p[1:]
+    e_new = gamma * (p[0] - bp)
+    p_new = p[1:] + ((gamma - 1) * bp / b2 - gamma * p[0]) * beta
+    return np.array([e_new, *p_new])
+
+
 def parse_lhe_costheta(lhe_path: Path) -> np.ndarray:
     """cos(theta) of the outgoing mu- relative to the incoming e- direction,
-    the standard A_FB convention. The e- direction is read from each event
+    the standard A_FB convention, evaluated in the rest frame of the two
+    incoming (status -1) legs. The e- direction is read from each event
     rather than assumed, so the result does not depend on which beam MG5 puts
-    along +z. The lab frame is the CM frame here since lpp1=lpp2=0 -- no
-    PDF/parton boost to undo.
+    along +z. With lpp=0 the incoming legs are the beams and the boost is
+    the identity; with ISR on they are the post-radiation e+e-, so the boost
+    undoes the longitudinal recoil against the radiated photons.
 
     Until 2026-09-27 this measured theta from the e+ beam, which flips A_FB.
     Combined with a sign error in simulate_mumu.iba_f1_f2 the two flips
@@ -176,6 +225,7 @@ def parse_lhe_costheta(lhe_path: Path) -> np.ndarray:
     for block in text.split("<event>")[1:]:
         body = block.split("</event>")[0]
         p_mu = p_em = None
+        p_in = np.zeros(4)
         for line in body.splitlines():
             fields = line.split()
             if len(fields) < 10:
@@ -184,13 +234,17 @@ def parse_lhe_costheta(lhe_path: Path) -> np.ndarray:
                 pdg, status = int(fields[0]), int(fields[1])
             except ValueError:
                 continue
-            p = np.array([float(fields[6]), float(fields[7]), float(fields[8])])
+            p = np.array([float(fields[9]), float(fields[6]), float(fields[7]), float(fields[8])])
+            if status == -1:
+                p_in += p
             if pdg == 11 and status == -1:
                 p_em = p
             elif pdg == 13 and status == 1:
                 p_mu = p
         if p_mu is not None and p_em is not None:
-            costhetas.append(float(p_mu @ p_em / (np.linalg.norm(p_mu) * np.linalg.norm(p_em))))
+            mu = boost_to_rest_frame(p_mu, p_in)[1:]
+            em = boost_to_rest_frame(p_em, p_in)[1:]
+            costhetas.append(float(mu @ em / (np.linalg.norm(mu) * np.linalg.norm(em))))
     return np.array(costhetas)
 
 
@@ -269,6 +323,20 @@ def run_scan_mg5(rng: np.random.Generator, truth: dict) -> pd.DataFrame:
 
 
 def main() -> None:
+    global ISR_ON
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--isr", action="store_true", help="switch on MG5's e+e- ISR structure functions (MG5 >= 3.2.0)")
+    args = parser.parse_args()
+    ISR_ON = args.isr
+    tag = "_isr" if ISR_ON else ""
+    if ISR_ON:
+        # match the fit's radiator integral to the generator-level sqrt(s') cut
+        ccs.ISR_X_MAX = 1 - SPRIME_MIN_FRACTION**2
+        print(
+            f"ISR ON: lpp=-/+3, pdlabel=isronlyll, sqrt(s')/sqrt(s) > {SPRIME_MIN_FRACTION} "
+            f"(fit radiator truncated at x_max = {ccs.ISR_X_MAX:.3f})"
+        )
+
     ensure_process_generated()
     truth = read_param_card_truth()
     print(
@@ -286,8 +354,8 @@ def main() -> None:
     print(scan.to_string(index=False))
 
     DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
-    scan.to_csv(DATA_PROCESSED / "simulated_mumu_mg5_scan.csv", index=False)
-    print(f"\nSaved scan table to {DATA_PROCESSED / 'simulated_mumu_mg5_scan.csv'}")
+    scan.to_csv(DATA_PROCESSED / f"simulated_mumu_mg5{tag}_scan.csv", index=False)
+    print(f"\nSaved scan table to {DATA_PROCESSED / f'simulated_mumu_mg5{tag}_scan.csv'}")
 
     print("\n=== Naive Breit-Wigner fit to MG5-generated points ===")
     fit_plain = fit_breit_wigner(scan)
@@ -302,32 +370,52 @@ def main() -> None:
     pull_mZ = (fit_isr.values["mZ"] - truth["mZ"]) / fit_isr.errors["mZ"]
     pull_gammaZ = (fit_isr.values["gammaZ"] - truth["gammaZ"]) / fit_isr.errors["gammaZ"]
     print(f"  pull vs. MG5 param_card truth: mZ {pull_mZ:+.2f} sigma, gammaZ {pull_gammaZ:+.2f} sigma")
-    print(
-        "  NOTE: this MG5 process has ISR/beamstrahlung switched off (see README), so the\n"
-        "  *naive* fit above is the physically correct lineshape model here -- convolving in\n"
-        "  an ISR radiator that isn't actually present over-corrects and biases mZ/gammaZ\n"
-        "  low, the mirror image of the OPAL case where the real data DOES have ISR and the\n"
-        "  naive fit is the biased one. The AFB fit below deliberately uses the naive fit's\n"
-        "  mZ/gammaZ, not this ISR-convolved one."
-    )
+    if ISR_ON:
+        print(
+            "  NOTE: ISR is ON in this MG5 run, so the ISR-convolved fit is the physically\n"
+            "  correct lineshape model and the naive fit should be biased high, as on the\n"
+            "  real OPAL data. The AFB fit below uses this ISR-convolved fit's mZ/gammaZ."
+        )
+        lineshape_for_afb = fit_isr
+        true_model, true_label = breit_wigner_isr, "True generating curve (MG5 with ISR, x_max cut)"
+    else:
+        print(
+            "  NOTE: this MG5 process has ISR/beamstrahlung switched off (see README), so the\n"
+            "  *naive* fit above is the physically correct lineshape model here -- convolving in\n"
+            "  an ISR radiator that isn't actually present over-corrects and biases mZ/gammaZ\n"
+            "  low, the mirror image of the OPAL case where the real data DOES have ISR and the\n"
+            "  naive fit is the biased one. The AFB fit below deliberately uses the naive fit's\n"
+            "  mZ/gammaZ, not this ISR-convolved one. Re-run with --isr for the other case."
+        )
+        lineshape_for_afb = fit_plain
+        true_model, true_label = breit_wigner, "True generating curve (MG5, no ISR)"
 
     peak_row = scan.loc[(scan["sqrt_s_GeV"] - truth["mZ"]).abs().idxmin()]
     sigma_peak_true_nb = peak_row["sigma_mg5_true_pb"] / 1000
+    if ISR_ON:
+        # MG5's on-peak number is the radiated cross section; undo the
+        # radiator's on-peak reduction so the true curve is drawn with the
+        # born peak height the convolution expects.
+        born_over_obs = breit_wigner(truth["mZ"], 1.0, truth["mZ"], truth["gammaZ"]) / breit_wigner_isr(
+            truth["mZ"], 1.0, truth["mZ"], truth["gammaZ"]
+        )[0]
+        sigma_peak_true_nb *= born_over_obs
 
     plot_closure(
         scan,
         fit_plain,
         fit_isr,
-        DATA_PROCESSED / "simulated_mumu_mg5_closure.png",
+        DATA_PROCESSED / f"simulated_mumu_mg5{tag}_closure.png",
         sigma_peak_true=sigma_peak_true_nb,
         mZ_true=truth["mZ"],
         gammaZ_true=truth["gammaZ"],
-        true_model=breit_wigner,
-        true_label="True generating curve (MG5, no ISR)",
+        true_model=true_model,
+        true_label=true_label,
     )
 
-    print("\n=== A_FB(s) fit (mZ, gammaZ fixed from the NAIVE lineshape fit -- see note above) ===")
-    fit_afb_result = fit_afb(scan, fit_plain.values["mZ"], fit_plain.values["gammaZ"])
+    which = "ISR-convolved" if ISR_ON else "NAIVE"
+    print(f"\n=== A_FB(s) fit (mZ, gammaZ fixed from the {which} lineshape fit -- see note above) ===")
+    fit_afb_result = fit_afb(scan, lineshape_for_afb.values["mZ"], lineshape_for_afb.values["gammaZ"])
     print(f"chi2/ndof = {fit_afb_result.fval:.2f}/{fit_afb_result.ndof:.0f}")
     fitted_sin2 = fit_afb_result.values["sin2thetaw"]
     fitted_sin2_err = fit_afb_result.errors["sin2thetaw"]
@@ -341,9 +429,9 @@ def main() -> None:
     plot_afb(
         scan,
         fit_afb_result,
-        fit_plain.values["mZ"],
-        fit_plain.values["gammaZ"],
-        DATA_PROCESSED / "simulated_mumu_mg5_afb.png",
+        lineshape_for_afb.values["mZ"],
+        lineshape_for_afb.values["gammaZ"],
+        DATA_PROCESSED / f"simulated_mumu_mg5{tag}_afb.png",
         sin2w_true=truth["sin2w_onshell"],
         mZ_true=truth["mZ"],
         gammaZ_true=truth["gammaZ"],
