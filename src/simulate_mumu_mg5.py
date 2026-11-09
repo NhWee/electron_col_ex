@@ -30,6 +30,7 @@ default path below.
 
     python src/simulate_mumu_mg5.py          # ISR off (the original test)
     python src/simulate_mumu_mg5.py --isr    # ISR on via MG5's e+e- structure functions
+    python src/simulate_mumu_mg5.py --refit [--isr]   # re-fit the saved scan, no MG5 run
 
 With `--isr` (MadGraph5 >= 3.2.0) the beams are given the leading-log
 electron/positron PDFs (`lpp = -/+3`, `pdlabel = isronlyll`), so the
@@ -38,12 +39,23 @@ the ISR-convolved fit should now be the one that recovers the truth. The
 photon-exchange term makes the radiative-return tail diverge without a cut,
 so a cut sqrt(s')/sqrt(s) > SPRIME_MIN_FRACTION is applied as a minimum
 mu+mu- invariant mass (`mmll`) and the fit's ISR integral is truncated at
-the matching x_max = 1 - SPRIME_MIN_FRACTION^2. cos(theta) is evaluated in
-the post-radiation e+e- rest frame, read from each event's incoming legs.
+the matching x_max = 1 - SPRIME_MIN_FRACTION^2. MG5's leading-log electron
+PDFs are tabulated in z = ln(Q^2/m_e^2)/2 (lep_densities/isronlyll/eepdf.f),
+so they depend on the factorization scale Q; the fit radiator evaluates its
+beta at the nominal s, so Q is fixed to sqrt(s) for both beams (MG5's
+default is a dynamical scale). cos(theta) is evaluated in the
+post-radiation e+e- rest frame, read from each event's incoming legs.
 
-The --isr path was written without a MadGraph5 installation to test it
-against (2026-11-05); the run_card parameter names follow the 3.5.x
-template and MG5 will refuse unknown names, so a mismatch fails loudly.
+The --isr path has not been run yet. Its run_card settings (lpp = -3/+3,
+pdlabel = isronlyll, mmll, fixed_fac_scale, dsqrt_q2fact1/2) were checked
+on 2026-11-08 against the run_card definitions in MadGraph5 v3.5.17's
+madgraph/various/banner.py, without running MG5. MG5 refuses unknown
+names, so a mismatch in another version fails loudly.
+
+--refit re-analyses the scan table an earlier run saved
+(data/processed/simulated_mumu_mg5[_isr]_scan.csv) with the current fit
+code, without generating events; it needs the process directory's
+param_card.dat for the truth.
 """
 
 import argparse
@@ -60,7 +72,7 @@ from uncertainties import ufloat
 
 import compute_cross_section as ccs
 from compute_cross_section import DATA_PROCESSED, breit_wigner, breit_wigner_isr, fit_breit_wigner, fit_breit_wigner_isr, print_fit_result
-from simulate_mumu import SCAN_POINTS_GEV, fit_afb, plot_afb, plot_closure
+from simulate_mumu import SCAN_POINTS_GEV, afb_errors, asymmetric_pull, fit_afb, plot_afb, plot_closure
 
 MG5_EXECUTABLE = Path(
     os.environ.get(
@@ -117,7 +129,7 @@ def ensure_process_generated() -> None:
     _run_mg5(["generate e+ e- > mu+ mu-", f"output {PROCESS_DIR}"])
 
 
-def read_param_card_truth() -> dict:
+def read_param_card_truth(param_card: Path | None = None) -> dict:
     """Ground truth read straight from MadGraph5's own param_card.dat, not
     hand-typed: MZ and its decay width, plus the *dependent* on-shell W mass
     (MG5 computes MW from MZ, Gf and alpha_EW under the on-shell scheme --
@@ -127,7 +139,10 @@ def read_param_card_truth() -> dict:
     as PDG's effective sin2(theta_W_eff) = 0.23155 used in
     simulate_mumu.py's IBA fit (a real, well-known ~0.009 scheme difference
     between the on-shell and effective definitions, not a bug)."""
-    param_card = PROCESS_DIR / "Cards" / "param_card.dat"
+    if param_card is None:
+        param_card = PROCESS_DIR / "Cards" / "param_card.dat"
+    if not param_card.exists():
+        raise FileNotFoundError(f"{param_card} not found: run without --refit once to generate the MG5 process directory.")
     mass_values: dict[str, float] = {}
     decay_values: dict[str, float] = {}
     for line in param_card.read_text().splitlines():
@@ -156,12 +171,19 @@ def run_mg5_launch(sqrt_s: float, nevents: int, seed: int) -> tuple[Path, float]
     section in pb, parsed from its stdout summary."""
     ebeam = sqrt_s / 2
     if ISR_ON:
-        # e+ is beam 1 in "generate e+ e- > mu+ mu-"; the sign of lpp follows
-        # the beam particle's charge, as for proton (+1) / antiproton (-1).
+        # e+ is beam 1 in "generate e+ e- > mu+ mu-". MG5's run_card defines
+        # lpp = +3 / -3 as the electron / positron PDF: the sign follows the
+        # sign of the beam particle's PDG id (e- = 11, e+ = -11), as for
+        # proton (+1) / antiproton (-1), not its electric charge.
+        # The LL electron PDFs depend on the factorization scale; fix it to
+        # sqrt(s), the scale at which the fit radiator evaluates beta.
         beam_settings = [
             "set lpp1 -3",
             "set lpp2 3",
             "set pdlabel isronlyll",
+            "set fixed_fac_scale True",
+            f"set dsqrt_q2fact1 {sqrt_s:.4f}",
+            f"set dsqrt_q2fact2 {sqrt_s:.4f}",
             f"set mmll {SPRIME_MIN_FRACTION * sqrt_s:.4f}",
         ]
     else:
@@ -322,40 +344,15 @@ def run_scan_mg5(rng: np.random.Generator, truth: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def main() -> None:
-    global ISR_ON
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--isr", action="store_true", help="switch on MG5's e+e- ISR structure functions (MG5 >= 3.2.0)")
-    args = parser.parse_args()
-    ISR_ON = args.isr
-    tag = "_isr" if ISR_ON else ""
-    if ISR_ON:
-        # match the fit's radiator integral to the generator-level sqrt(s') cut
-        ccs.ISR_X_MAX = 1 - SPRIME_MIN_FRACTION**2
-        print(
-            f"ISR ON: lpp=-/+3, pdlabel=isronlyll, sqrt(s')/sqrt(s) > {SPRIME_MIN_FRACTION} "
-            f"(fit radiator truncated at x_max = {ccs.ISR_X_MAX:.3f})"
-        )
+def scan_csv_path(isr_on: bool, out_dir: Path = DATA_PROCESSED) -> Path:
+    return out_dir / f"simulated_mumu_mg5{'_isr' if isr_on else ''}_scan.csv"
 
-    ensure_process_generated()
-    truth = read_param_card_truth()
-    print(
-        f"MG5 ground truth (from param_card.dat): mZ={truth['mZ']:.4f} GeV, "
-        f"gammaZ={truth['gammaZ']:.4f} GeV, mW={truth['mW']:.4f} GeV\n"
-        f"  -> sin2(theta_W)_on-shell = 1-(mW/mZ)^2 = {truth['sin2w_onshell']:.4f} "
-        f"(NOT PDG's effective sin2(theta_W_eff)=0.23155 used in simulate_mumu.py -- "
-        f"on-shell vs. effective is a real ~0.009 scheme difference, not a bug)"
-    )
 
-    scan = run_scan_mg5(RNG, truth)
-
-    pd.set_option("display.float_format", lambda x: f"{x:.4f}")
-    print("\n=== MadGraph5-generated mu+mu- cross section scan ===")
-    print(scan.to_string(index=False))
-
-    DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
-    scan.to_csv(DATA_PROCESSED / f"simulated_mumu_mg5{tag}_scan.csv", index=False)
-    print(f"\nSaved scan table to {DATA_PROCESSED / f'simulated_mumu_mg5{tag}_scan.csv'}")
+def analyse_scan(scan: pd.DataFrame, truth: dict, isr_on: bool, out_dir: Path = DATA_PROCESSED) -> dict:
+    """Lineshape and A_FB fits of one MG5 scan (fresh, or reloaded with
+    --refit), with pulls against the param_card truth; writes the closure
+    and A_FB plots to out_dir and returns the pulls."""
+    tag = "_isr" if isr_on else ""
 
     print("\n=== Naive Breit-Wigner fit to MG5-generated points ===")
     fit_plain = fit_breit_wigner(scan)
@@ -364,13 +361,13 @@ def main() -> None:
     pull_gammaZ_plain = (fit_plain.values["gammaZ"] - truth["gammaZ"]) / fit_plain.errors["gammaZ"]
     print(f"  pull vs. MG5 param_card truth: mZ {pull_mZ_plain:+.2f} sigma, gammaZ {pull_gammaZ_plain:+.2f} sigma")
 
-    print("\n=== ISR-convolved Breit-Wigner fit to MG5-generated points ===")
+    print(f"\n=== ISR-convolved Breit-Wigner fit to MG5-generated points ({ccs.RADIATOR_LABELS[ccs.ISR_RADIATOR]} radiator) ===")
     fit_isr = fit_breit_wigner_isr(scan)
     print_fit_result(fit_isr)
     pull_mZ = (fit_isr.values["mZ"] - truth["mZ"]) / fit_isr.errors["mZ"]
     pull_gammaZ = (fit_isr.values["gammaZ"] - truth["gammaZ"]) / fit_isr.errors["gammaZ"]
     print(f"  pull vs. MG5 param_card truth: mZ {pull_mZ:+.2f} sigma, gammaZ {pull_gammaZ:+.2f} sigma")
-    if ISR_ON:
+    if isr_on:
         print(
             "  NOTE: ISR is ON in this MG5 run, so the ISR-convolved fit is the physically\n"
             "  correct lineshape model and the naive fit should be biased high, as on the\n"
@@ -392,7 +389,7 @@ def main() -> None:
 
     peak_row = scan.loc[(scan["sqrt_s_GeV"] - truth["mZ"]).abs().idxmin()]
     sigma_peak_true_nb = peak_row["sigma_mg5_true_pb"] / 1000
-    if ISR_ON:
+    if isr_on:
         # MG5's on-peak number is the radiated cross section; undo the
         # radiator's on-peak reduction so the true curve is drawn with the
         # born peak height the convolution expects.
@@ -405,7 +402,7 @@ def main() -> None:
         scan,
         fit_plain,
         fit_isr,
-        DATA_PROCESSED / f"simulated_mumu_mg5{tag}_closure.png",
+        out_dir / f"simulated_mumu_mg5{tag}_closure.png",
         sigma_peak_true=sigma_peak_true_nb,
         mZ_true=truth["mZ"],
         gammaZ_true=truth["gammaZ"],
@@ -413,29 +410,82 @@ def main() -> None:
         true_label=true_label,
     )
 
-    which = "ISR-convolved" if ISR_ON else "NAIVE"
+    which = "ISR-convolved" if isr_on else "NAIVE"
     print(f"\n=== A_FB(s) fit (mZ, gammaZ fixed from the {which} lineshape fit -- see note above) ===")
     fit_afb_result = fit_afb(scan, lineshape_for_afb.values["mZ"], lineshape_for_afb.values["gammaZ"])
     print(f"chi2/ndof = {fit_afb_result.fval:.2f}/{fit_afb_result.ndof:.0f}")
     fitted_sin2 = fit_afb_result.values["sin2thetaw"]
-    fitted_sin2_err = fit_afb_result.errors["sin2thetaw"]
-    pull_sin2 = (fitted_sin2 - truth["sin2w_onshell"]) / fitted_sin2_err
+    hesse_err = fit_afb_result.errors["sin2thetaw"]
+    lower, upper, from_minos = afb_errors(fit_afb_result)
+    pull_sin2 = asymmetric_pull(fitted_sin2, truth["sin2w_onshell"], lower, upper)
     print(
-        f"  sin2(theta_W)_on-shell = {fitted_sin2:.5f} +/- {fitted_sin2_err:.5f}   "
-        f"(MG5 truth: {truth['sin2w_onshell']:.5f})"
+        f"  sin2(theta_W)_on-shell = {fitted_sin2:.5f} +{upper:.5f} -{lower:.5f} ({'MINOS' if from_minos else 'Hesse'}), "
+        f"+/- {hesse_err:.5f} (Hesse)   (MG5 truth: {truth['sin2w_onshell']:.5f})"
     )
-    print(f"  pull vs. MG5 param_card truth: {pull_sin2:+.2f} sigma")
+    print(f"  pull vs. MG5 param_card truth: {pull_sin2:+.2f} sigma (MINOS), "
+          f"{(fitted_sin2 - truth['sin2w_onshell']) / hesse_err:+.2f} sigma (Hesse)")
 
     plot_afb(
         scan,
         fit_afb_result,
         lineshape_for_afb.values["mZ"],
         lineshape_for_afb.values["gammaZ"],
-        DATA_PROCESSED / f"simulated_mumu_mg5{tag}_afb.png",
+        out_dir / f"simulated_mumu_mg5{tag}_afb.png",
         sin2w_true=truth["sin2w_onshell"],
         mZ_true=truth["mZ"],
         gammaZ_true=truth["gammaZ"],
     )
+    return {
+        "pull_mZ_naive": pull_mZ_plain, "pull_gammaZ_naive": pull_gammaZ_plain,
+        "pull_mZ_isr": pull_mZ, "pull_gammaZ_isr": pull_gammaZ,
+        "sin2w": fitted_sin2, "pull_sin2w": pull_sin2,
+    }
+
+
+def main() -> None:
+    global ISR_ON
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--isr", action="store_true", help="switch on MG5's e+e- ISR structure functions (MG5 >= 3.2.0)")
+    parser.add_argument("--refit", action="store_true",
+                        help="re-analyse the scan saved by an earlier run with the current fit code; no MG5 run")
+    args = parser.parse_args()
+    ISR_ON = args.isr
+    if ISR_ON:
+        # match the fit's radiator integral to the generator-level sqrt(s') cut
+        ccs.ISR_X_MAX = 1 - SPRIME_MIN_FRACTION**2
+        print(
+            f"ISR ON: lpp=-/+3, pdlabel=isronlyll, factorization scale = sqrt(s), sqrt(s')/sqrt(s) > {SPRIME_MIN_FRACTION} "
+            f"(fit radiator truncated at x_max = {ccs.ISR_X_MAX:.3f})"
+        )
+
+    if not args.refit:
+        ensure_process_generated()
+    truth = read_param_card_truth()
+    print(
+        f"MG5 ground truth (from param_card.dat): mZ={truth['mZ']:.4f} GeV, "
+        f"gammaZ={truth['gammaZ']:.4f} GeV, mW={truth['mW']:.4f} GeV\n"
+        f"  -> sin2(theta_W)_on-shell = 1-(mW/mZ)^2 = {truth['sin2w_onshell']:.4f} "
+        f"(NOT PDG's effective sin2(theta_W_eff)=0.23155 used in simulate_mumu.py -- "
+        f"on-shell vs. effective is a real ~0.009 scheme difference, not a bug)"
+    )
+
+    csv_path = scan_csv_path(ISR_ON)
+    if args.refit:
+        if not csv_path.exists():
+            raise FileNotFoundError(f"{csv_path} not found: run without --refit first.")
+        scan = pd.read_csv(csv_path)
+        print(f"\nRe-analysing {csv_path} with the current fit code (no MadGraph5 run).")
+    else:
+        scan = run_scan_mg5(RNG, truth)
+        DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
+        scan.to_csv(csv_path, index=False)
+        print(f"\nSaved scan table to {csv_path}")
+
+    pd.set_option("display.float_format", lambda x: f"{x:.4f}")
+    print("\n=== MadGraph5-generated mu+mu- cross section scan ===")
+    print(scan.to_string(index=False))
+
+    analyse_scan(scan, truth, ISR_ON)
 
 
 if __name__ == "__main__":

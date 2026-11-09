@@ -3,8 +3,11 @@
 import gzip
 
 import numpy as np
+import pandas as pd
 import pytest
 
+import compute_cross_section as ccs
+import simulate_mumu as sm
 import simulate_mumu_mg5 as mg5
 
 
@@ -64,3 +67,37 @@ def test_parse_costheta_isr_boosted_frame(tmp_path):
     ]
     c = mg5.parse_lhe_costheta(_lhe(tmp_path, [ev]))
     np.testing.assert_allclose(c, [0.0], atol=1e-9)
+
+
+def test_read_param_card_truth(tmp_path):
+    """Lines in the format of MG5's sm param_card.dat (MASS block with the
+    dependent W mass, DECAY line for the Z)."""
+    card = tmp_path / "param_card.dat"
+    card.write_text(
+        "BLOCK MASS # \n"
+        "      23 9.118800e+01 # MZ \n"
+        "      25 1.250000e+02 # MH \n"
+        "  24 8.041900e+01 # w+ : cmath.sqrt(MZ__exp__2/2. + ...) \n"
+        "DECAY  23 2.441404e+00 # WZ \n"
+    )
+    truth = mg5.read_param_card_truth(card)
+    assert truth["mZ"] == 91.188 and truth["gammaZ"] == 2.441404 and truth["mW"] == 80.419
+    assert truth["sin2w_onshell"] == pytest.approx(1 - (80.419 / 91.188) ** 2)
+
+
+@pytest.mark.parametrize("isr_on", [False, True])
+def test_analyse_scan_runs_on_a_toy_scan(tmp_path, isr_on):
+    """The analysis half of the MG5 script (also what --refit runs), fed a
+    toy scan in the MG5 scan-table format instead of MadGraph5 events."""
+    rng = np.random.default_rng(7)
+    rows = [sm.generate_scan_point(x, 0.93, 0.0004, rng) for x in sm.SCAN_POINTS_GEV]
+    scan = pd.DataFrame(rows)
+    scan["sigma_mg5_true_pb"] = 1000 * ccs.breit_wigner_isr(scan["sqrt_s_GeV"].to_numpy(), sm.TRUE_SIGMA_PEAK_NB, sm.TRUE_MZ_GEV, sm.TRUE_GAMMAZ_GEV)
+    truth = {"mZ": sm.TRUE_MZ_GEV, "gammaZ": sm.TRUE_GAMMAZ_GEV, "sin2w_onshell": sm.SIN2_THETAW_EFF}
+    out = mg5.analyse_scan(scan, truth, isr_on=isr_on, out_dir=tmp_path)
+    assert all(np.isfinite(v) for v in out.values())
+    # the toy has ISR, so the ISR fit is the one that recovers the truth
+    assert abs(out["pull_mZ_isr"]) < 3 < out["pull_mZ_naive"]
+    tag = "_isr" if isr_on else ""
+    assert (tmp_path / f"simulated_mumu_mg5{tag}_closure.png").exists()
+    assert (tmp_path / f"simulated_mumu_mg5{tag}_afb.png").exists()
