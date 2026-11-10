@@ -245,6 +245,16 @@ def breit_wigner_relativistic(sqrt_s: np.ndarray, sigma_peak: float, mZ: float, 
 # constant S. That removes the x -> 0 singularity analytically instead of
 # leaving it to the quadrature, and makes the convolution ~3x faster.
 
+# Non-logarithmic part of the O(alpha) soft+virtual correction. The complete
+# O(alpha) term is (alpha/pi)(3/2 L + pi^2/3 - 2) with L = ln(s/m_e^2)
+# (Berends, van Neerven, Burgers, Nucl. Phys. B297 (1988) 429); 3/4 beta is
+# its leading-log part and this constant, 0.65%, is the rest. The O(alpha)
+# hard part -beta (1 - x/2) has no such remainder. Unlike the leading-log
+# terms it does not integrate to zero: it is a genuine K-factor on the soft
+# part, which lowers every fitted peak cross section by 0.6% and moves
+# M_Z and Gamma_Z by less than 0.1 MeV.
+NONLOG_SOFT_VIRTUAL = ALPHA_QED / np.pi * (np.pi**2 / 3 - 0.5)
+
 
 def isr_beta(sqrt_s: float) -> float:
     """Leading-log QED exponent beta = (2 alpha/pi)(ln(s/m_e^2) - 1) of the
@@ -265,15 +275,19 @@ def _hard_simplified(x: float, beta: float) -> float:
 
 
 def _soft_o1(beta: float) -> float:
-    return 1 + 0.75 * beta
+    return 1 + 0.75 * beta + NONLOG_SOFT_VIRTUAL
 
 
 def _hard_o1(x: float, beta: float) -> float:
     return -beta * (1 - x / 2)
 
 
-def _soft_o2(beta: float) -> float:
+def _soft_o2ll(beta: float) -> float:
     return 1 + 0.75 * beta + beta**2 * (9 / 32 - np.pi**2 / 12)
+
+
+def _soft_o2(beta: float) -> float:
+    return _soft_o2ll(beta) + NONLOG_SOFT_VIRTUAL
 
 
 def _hard_o2(x: float, beta: float) -> float:
@@ -284,17 +298,22 @@ def _hard_o2(x: float, beta: float) -> float:
 RADIATOR_PARTS = {
     "o2": (_soft_o2, _hard_o2),
     "o1": (_soft_o1, _hard_o1),
+    "o2ll": (_soft_o2ll, _hard_o2),
     "simplified": (_soft_simplified, _hard_simplified),
 }
 RADIATOR_LABELS = {
-    "o2": "O(alpha^2) leading-log",
-    "o1": "O(alpha) leading-log",
+    "o2": "O(alpha) + leading-log O(alpha^2)",
+    "o1": "O(alpha)",
+    "o2ll": "leading-log only, to O(alpha^2)",
     "simplified": "simplified (pre-2026-11-05)",
 }
-RADIATOR_MATHTEXT = {"o2": r"$\mathcal{O}(\alpha^2)$", "o1": r"$\mathcal{O}(\alpha)$", "simplified": "simplified"}
+RADIATOR_MATHTEXT = {"o2": r"$\mathcal{O}(\alpha^2)$", "o1": r"$\mathcal{O}(\alpha)$",
+                     "o2ll": r"leading-log $\mathcal{O}(\alpha^2)$", "simplified": "simplified"}
 # The radiator one order lower, whose difference to this one is the
 # truncation systematic in error_budget().
-LOWER_ORDER = {"o2": "o1", "o1": "simplified", "simplified": "o1"}
+LOWER_ORDER = {"o2": "o1", "o2ll": "o1", "o1": "simplified", "simplified": "o1"}
+# The same radiator without the non-log O(alpha) term, where there is one.
+LEADING_LOG_ONLY = {"o2": "o2ll"}
 
 
 def _radiator_from_parts(name: str, x: float, beta: float) -> float:
@@ -302,10 +321,10 @@ def _radiator_from_parts(name: str, x: float, beta: float) -> float:
     return beta * x ** (beta - 1) * soft(beta) + hard(x, beta)
 
 
-def qed_radiator_o2(x: float, beta: float) -> float:
-    """O(alpha^2) leading-log radiator, the default. Structure-function
-    approach of Kuraev-Fadin (Sov. J. Nucl. Phys. 41 (1985) 466) and
-    Nicrosini-Trentadue (Phys. Lett. B196 (1987) 551):
+def qed_radiator_o2ll(x: float, beta: float) -> float:
+    """Leading-log radiator to O(alpha^2). Structure-function approach of
+    Kuraev-Fadin (Sov. J. Nucl. Phys. 41 (1985) 466) and Nicrosini-Trentadue
+    (Phys. Lett. B196 (1987) 551):
 
         H(x) = beta x^(beta-1) [1 + 3/4 beta + (9/32 - pi^2/12) beta^2]
                - beta (1 - x/2)
@@ -314,21 +333,36 @@ def qed_radiator_o2(x: float, beta: float) -> float:
     The soft+virtual factor is the expansion of exp(beta(3/4 - gamma_E)) /
     Gamma(1 + beta). Integrates to exactly 1, and agrees with the
     convolution of two single-electron structure functions up to O(beta^3)
-    terms (both checked in tests/). Leading-log only: no O(alpha) non-log
-    terms and no initial-state pair emission, so not the ZFITTER/TOPAZ0
-    radiator LEP used."""
+    terms (both checked in tests/)."""
+    return _radiator_from_parts("o2ll", x, beta)
+
+
+def qed_radiator_o2(x: float, beta: float) -> float:
+    """The default radiator: qed_radiator_o2ll plus the non-logarithmic
+    O(alpha) soft+virtual term, i.e. complete to O(alpha) and leading-log
+    at O(alpha^2):
+
+        H(x) = beta x^(beta-1) [1 + 3/4 beta + (alpha/pi)(pi^2/3 - 1/2)
+                                + (9/32 - pi^2/12) beta^2]
+               - beta (1 - x/2)
+               + beta^2/8 [(2-x)(3 ln(1-x) - 4 ln x) - 4 ln(1-x)/x - 6 + x]
+
+    Integrates to 1 + NONLOG_SOFT_VIRTUAL = 1.0065. Still not the
+    ZFITTER/TOPAZ0 radiator LEP used: no non-leading O(alpha^2) terms, no
+    O(alpha^3), no initial-state pair emission."""
     return _radiator_from_parts("o2", x, beta)
 
 
 def qed_radiator_o1(x: float, beta: float) -> float:
-    """O(alpha) leading-log radiator (the default from 2026-11-05 to
-    2026-11-08, then called "full"):
+    """Complete O(alpha) radiator with the soft photons exponentiated:
 
-        H(x) = beta x^(beta-1) (1 + 3/4 beta) - beta (1 - x/2)
+        H(x) = beta x^(beta-1) [1 + 3/4 beta + (alpha/pi)(pi^2/3 - 1/2)]
+               - beta (1 - x/2)
 
-    The first term is the exponentiated soft+virtual piece, the second the
-    O(alpha) hard-photon term; together they follow from the plus-prescribed
-    splitting function and integrate to exactly 1."""
+    The first term is the soft+virtual piece, the second the O(alpha)
+    hard-photon term. Without the non-log constant (the default from
+    2026-11-05 to 2026-11-08, then called "full") it follows from the
+    plus-prescribed splitting function and integrates to exactly 1."""
     return _radiator_from_parts("o1", x, beta)
 
 
@@ -486,7 +520,7 @@ def fit_breit_wigner(comparison: pd.DataFrame, beam_spread: bool = False) -> Min
 
 def fit_breit_wigner_isr(comparison: pd.DataFrame, radiator: str | None = None, beam_spread: bool = False) -> Minuit:
     """Same as fit_breit_wigner but with the ISR-convolved model. `radiator`
-    selects "o2", "o1" or "simplified" for this call only (default:
+    selects "o2", "o1", "o2ll" or "simplified" for this call only (default:
     ISR_RADIATOR)."""
     model = breit_wigner_isr
     if beam_spread:
@@ -640,9 +674,14 @@ def error_budget(clean: pd.DataFrame, radiator: str | None = None) -> pd.DataFra
         add("photon exchange + gamma/Z interference (improved Born - running BW)", "omission",
             mz_iba - fit_run.values["mZ"], gz_iba - fit_run.values["gammaZ"], fit_iba)
 
-        # informational: the beam-spread smearing already in the baseline
+        # informational: corrections already in the baseline
         fit_unsmeared = fit_breit_wigner_isr(clean)
         add("beam-energy spread smearing (with - without)", "applied", *shift(fit_diag, fit_unsmeared), fit_unsmeared)
+        nonlog_peak_shift_pct = np.nan
+        if ISR_RADIATOR in LEADING_LOG_ONLY:
+            fit_ll = fit_breit_wigner_isr(clean, radiator=LEADING_LOG_ONLY[ISR_RADIATOR], beam_spread=True)
+            add("non-log O(alpha) radiator term (with - without)", "applied", *shift(fit_diag, fit_ll), fit_ll)
+            nonlog_peak_shift_pct = (fit_diag.values["sigma_peak"] / fit_ll.values["sigma_peak"] - 1) * 100
 
     budget = pd.DataFrame(rows)
     syst_rows = budget["kind"].isin(SYSTEMATIC_KINDS)
@@ -660,6 +699,7 @@ def error_budget(clean: pd.DataFrame, radiator: str | None = None) -> pd.DataFra
         mZ_complete=fit_cov.values["mZ"] + (convention["mZ_MeV"] + omission["mZ_MeV"]) / 1e3,
         gammaZ_complete=fit_cov.values["gammaZ"] + (convention["gammaZ_MeV"] + omission["gammaZ_MeV"]) / 1e3,
         iba_norm=fit_iba.values["sigma_peak"], iba_norm_err=fit_iba.errors["sigma_peak"],
+        nonlog_peak_shift_pct=nonlog_peak_shift_pct,
         chi2=fit_cov.fval, ndof=len(clean) - 3,
     )
     return budget
@@ -689,7 +729,9 @@ def print_error_budget(budget: pd.DataFrame) -> None:
             value = s[f"{key}_{suffix}"]
             total = np.hypot(np.hypot(fit_err, syst) / 1e3, pdg_err)
             print(f"    {name:7s} = {value:.4f} GeV, {(value - pdg) / total:+.2f} sigma from PDG (fit + syst + PDG errors)")
-    print(f"  improved-Born normalisation = {s['iba_norm']:.4f} +/- {s['iba_norm_err']:.4f} (1 = absolute G_F prediction)")
+    print(f"  improved-Born normalisation = {s['iba_norm']:.4f} +/- {s['iba_norm_err']:.4f} (1 = tree-level G_F prediction)")
+    if np.isfinite(s["nonlog_peak_shift_pct"]):
+        print(f"  the non-log O(alpha) radiator term changes the fitted sigma_peak by {s['nonlog_peak_shift_pct']:+.2f}%")
     print("  Rows of kind input-shift, convention, omission and applied are not added to any total.")
 
 
@@ -831,7 +873,7 @@ def main() -> None:
     fits_by_radiator = {name: (fit_isr if name == ISR_RADIATOR else fit_breit_wigner_isr(clean, radiator=name, beam_spread=True))
                         for name in RADIATOR_PARTS}
     for name, fit in fits_by_radiator.items():
-        print(f"  {RADIATOR_LABELS[name]:30s} chi2 {fit.fval:5.2f}   mZ {fit.values['mZ']:.4f}   "
+        print(f"  {RADIATOR_LABELS[name]:36s} chi2 {fit.fval:5.2f}   mZ {fit.values['mZ']:.4f}   "
               f"gammaZ {fit.values['gammaZ']:.4f}   sigma_peak {fit.values['sigma_peak']:.4f}")
     for higher, lower in [("o1", "simplified"), ("o2", "o1")]:
         d_m = (fits_by_radiator[higher].values["mZ"] - fits_by_radiator[lower].values["mZ"]) * 1000

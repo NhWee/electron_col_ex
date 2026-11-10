@@ -35,6 +35,13 @@ import numpy as np
 ALPHA_0 = 1 / 137.035999
 # alpha^-1(M_Z^2) = 128.947 +/- 0.013, Davier et al., arXiv:1908.00921, eq. (9)
 ALPHA_MZ = 1 / 128.947
+# Final-state QED factor of the electron partial width, 1 + 3 alpha(M_Z^2)/(4 pi)
+# (hep-ex/0012018 eq. 20). LEP's pole cross section sigma0_f = 12 pi Gamma_ee
+# Gamma_ff / (M_Z^2 Gamma_Z^2) contains it, while the Born Z term that ISR is
+# unfolded to is sigma0_f / delta_QED (eq. 23): the initial-state electrons
+# must not be given a final-state correction. So sigma0 = Born pole value
+# times this factor.
+DELTA_QED = 1 + 3 * ALPHA_MZ / (4 * np.pi)
 G_FERMI_GEV2 = 1.16637e-5
 GEV2_TO_NB = 389379.0  # (hbar*c)^2, CODATA, converted from mb to nb
 SIN2_THETAW_EFF = 0.23155
@@ -107,9 +114,10 @@ def z_term_cross_section_nb(
     sin2thetaw: float = SIN2_THETAW_EFF,
 ) -> np.ndarray:
     """The Z-exchange term of born_cross_section_nb alone (no photon, no
-    interference); alpha cancels in it. At sqrt_s = mZ it is the pole cross
-    section 12 pi Gamma_ee Gamma_ff / (M_Z^2 Gamma_Z^2), so the ratio of two
-    channels there is the ratio of their partial widths."""
+    interference); alpha cancels in it. At sqrt_s = mZ it is the Born pole
+    cross section 12 pi Gamma_ee Gamma_ff / (M_Z^2 Gamma_Z^2) built from
+    these couplings, so the ratio of two channels there is the ratio of
+    their partial widths. Multiply by DELTA_QED for LEP's sigma0."""
     sqrt_s = np.asarray(sqrt_s, dtype=float)
     c = chi(sqrt_s, mZ, gammaZ, ALPHA_0)
     v_e, a_e = couplings(*ELECTRON, sin2thetaw)

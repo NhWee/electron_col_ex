@@ -73,3 +73,42 @@ def test_joint_fit_recovers_truth_on_asimov_data():
     for ch, peak in truth.items():
         assert fit.values[f"sigma_peak_{ch}"] == pytest.approx(peak, rel=1e-3)
     assert fit.fval < 1e-6
+
+
+def test_z_term_at_the_pole_is_the_partial_width_formula():
+    """sigma0 = 12 pi Gamma_ee Gamma_ff / (M_Z^2 Gamma_Z^2), with Gamma_ee from
+    the independent partial-width formula in simulate_mumu.py."""
+    import electroweak as ew
+    import simulate_mumu as sm
+    mz, gz = sm.TRUE_MZ_GEV, sm.TRUE_GAMMAZ_GEV
+    gamma_ll = sm.gamma_ee_from_couplings()
+    expected = 12 * np.pi * gamma_ll**2 / (mz**2 * gz**2) * ew.GEV2_TO_NB
+    assert ew.z_term_cross_section_nb(mz, mz, gz, "mumu") == pytest.approx(expected, rel=1e-12)
+    assert ew.DELTA_QED == pytest.approx(1.00185, abs=1e-5)
+
+
+def test_joint_pole_quantities_propagation():
+    """sigma0_had and R_l from a stand-in fit with a known diagonal covariance."""
+    from iminuit import Minuit
+    import electroweak as ew
+    centre = dict(norm_qq=3.1, norm_mumu=1.0, norm_tautau=1.02, mZ=91.15, gammaZ=2.49)
+    sigma = dict(norm_qq=0.01, norm_mumu=0.005, norm_tautau=0.006, mZ=0.003, gammaZ=0.006)
+
+    def chi2(norm_qq, norm_mumu, norm_tautau, mZ, gammaZ):
+        values = dict(norm_qq=norm_qq, norm_mumu=norm_mumu, norm_tautau=norm_tautau, mZ=mZ, gammaZ=gammaZ)
+        return sum(((values[k] - centre[k]) / sigma[k]) ** 2 for k in centre)
+
+    chi2.errordef = Minuit.LEAST_SQUARES
+    fit = Minuit(chi2, **{k: v * 1.001 for k, v in centre.items()})
+    fit.migrad()
+    fit.hesse()
+    pole = ext.joint_pole_quantities(fit)
+    z_qq = float(ew.z_term_cross_section_nb(91.15, 91.15, 2.49, "qq"))
+    z_ll = float(ew.z_term_cross_section_nb(91.15, 91.15, 2.49, "mumu"))
+    assert pole["sigma0_had"] == pytest.approx(3.1 * z_qq * ew.DELTA_QED, rel=1e-5)
+    assert pole["r_lepton"] == pytest.approx(3.1 * z_qq / (1.01 * z_ll), rel=1e-5)
+    # sigma0 ~ norm / Gamma^2: relative errors 0.01/3.1 and 2 x 0.006/2.49 in quadrature
+    assert pole["sigma0_had_err"] / pole["sigma0_had"] == pytest.approx(np.hypot(0.01 / 3.1, 2 * 0.006 / 2.49), rel=0.02)
+    # R_l: the common Gamma_Z and M_Z dependence cancels
+    expected_r_err = np.sqrt((0.01 / 3.1) ** 2 + (0.005 / 2.02) ** 2 + (0.006 / 2.02) ** 2)
+    assert pole["r_lepton_err"] / pole["r_lepton"] == pytest.approx(expected_r_err, rel=0.02)

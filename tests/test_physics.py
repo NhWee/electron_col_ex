@@ -68,17 +68,31 @@ def test_isr_beta_at_z_pole():
     assert ccs.isr_beta(ccs.PDG_MZ_GEV) == pytest.approx(0.1077, abs=2e-4)
 
 
-@pytest.mark.parametrize("radiator, norm", [
-    (ccs.qed_radiator_o2, 1.0),
-    (ccs.qed_radiator_o1, 1.0),
-    (ccs.qed_radiator_simplified, 0.951),
+@pytest.mark.parametrize("radiator, norm, tolerance", [
+    (ccs.qed_radiator_o2ll, 1.0, 1e-6),
+    (ccs.qed_radiator_o2, 1.0 + ccs.NONLOG_SOFT_VIRTUAL, 1e-6),
+    (ccs.qed_radiator_o1, 1.0 + ccs.NONLOG_SOFT_VIRTUAL, 1e-6),
+    (ccs.qed_radiator_simplified, 0.951, 2e-3),
 ])
-def test_radiator_normalization(radiator, norm):
-    """The leading-log radiators conserve cross section, int_0^1 H dx = 1
-    (plus prescription); the old simplified one integrates to 0.951."""
+def test_radiator_normalization(radiator, norm, tolerance):
+    """The leading-log terms conserve cross section, int_0^1 H dx = 1 (plus
+    prescription). The complete O(alpha) radiators add the non-log
+    soft+virtual constant, a 0.65% K-factor; the old simplified one
+    integrates to 0.951."""
     beta = ccs.isr_beta(ccs.PDG_MZ_GEV)
     total, _ = quad(lambda x: radiator(x, beta), 0, 1, limit=400)
-    assert total == pytest.approx(norm, abs=1e-6 if norm == 1.0 else 2e-3)
+    assert total == pytest.approx(norm, abs=tolerance)
+
+
+def test_nonlog_term_value_and_its_effect_on_the_lineshape():
+    """(alpha/pi)(pi^2/3 - 1/2) = 0.65%. It multiplies the soft part only, so
+    across the resonance it rescales the observed cross section by a nearly
+    constant factor: a normalisation, not a shape."""
+    assert ccs.NONLOG_SOFT_VIRTUAL == pytest.approx(0.00648, abs=1e-5)
+    ratios = [one_radiator_convolution(e, ccs.qed_radiator_o2, unit_bw) / one_radiator_convolution(e, ccs.qed_radiator_o2ll, unit_bw)
+              for e in (89.45, ccs.PDG_MZ_GEV, 93.0)]
+    assert max(ratios) - min(ratios) < 2e-3
+    assert np.mean(ratios) == pytest.approx(1.006, abs=1.5e-3)
 
 
 def test_single_electron_structure_function_normalization():
@@ -89,14 +103,17 @@ def test_single_electron_structure_function_normalization():
 
 @pytest.mark.parametrize("sqrt_s", [89.45, ccs.PDG_MZ_GEV, 93.0])
 def test_o2_radiator_is_two_single_electron_structure_functions(sqrt_s):
-    """The two-beam O(beta^2) radiator must equal the convolution of two
+    """The two-beam leading-log O(beta^2) radiator must equal the convolution of two
     single-electron structure functions up to O(beta^3) terms, ~1e-3. The
     O(beta) radiator misses the beta^2 terms and is off by ~4e-3."""
     exact = two_beam_convolution(sqrt_s, unit_bw)
-    o2 = one_radiator_convolution(sqrt_s, ccs.qed_radiator_o2, unit_bw)
+    o2 = one_radiator_convolution(sqrt_s, ccs.qed_radiator_o2ll, unit_bw)
     assert o2 == pytest.approx(exact, rel=1.0e-3)
     if sqrt_s < 92:  # above the peak the O(beta) error changes sign and passes through 0
-        o1 = one_radiator_convolution(sqrt_s, ccs.qed_radiator_o1, unit_bw)
+        def o1_leading_log(x, beta):
+            return ccs.qed_radiator_o1(x, beta) - ccs.NONLOG_SOFT_VIRTUAL * beta * x ** (beta - 1)
+
+        o1 = one_radiator_convolution(sqrt_s, o1_leading_log, unit_bw)
         assert abs(o1 / exact - 1) > 2.5e-3
 
 
@@ -104,7 +121,8 @@ def test_o2_radiator_is_two_single_electron_structure_functions(sqrt_s):
 def test_convolution_substitution_matches_direct_quadrature(name):
     """convolve_isr() integrates in u = x^beta; check it against direct
     quadrature in x, with and without the acceptance cut."""
-    radiator = {"o2": ccs.qed_radiator_o2, "o1": ccs.qed_radiator_o1, "simplified": ccs.qed_radiator_simplified}[name]
+    radiator = {"o2": ccs.qed_radiator_o2, "o1": ccs.qed_radiator_o1, "o2ll": ccs.qed_radiator_o2ll,
+                "simplified": ccs.qed_radiator_simplified}[name]
     with ccs._radiator(name):
         for sqrt_s in (89.45, 91.2, 93.0):
             for x_max in (ccs.ISR_X_MAX, 0.19):

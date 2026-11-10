@@ -66,7 +66,7 @@ from compute_cross_section import (
     select_corrected_points,
     with_beam_spread,
 )
-from electroweak import fixed_to_running_width, z_term_cross_section_nb
+from electroweak import DELTA_QED, fixed_to_running_width, z_term_cross_section_nb
 
 # PDG 2024 for comparison only
 PDG_R_LEPTON = 20.767
@@ -271,9 +271,9 @@ def print_joint_fit(fit: Minuit, n_points: int) -> None:
     r_l, r_l_err = had / lep, np.sqrt(g @ cov @ g)
     ratio = mu / tau
     ratio_err = ratio * np.sqrt((fit.errors["sigma_peak_mumu"] / mu) ** 2 + (fit.errors["sigma_peak_tautau"] / tau) ** 2)
-    print(f"  R_l = sigma_had / sigma_l (born, at peak) = {r_l:.2f} +/- {r_l_err:.2f}   (PDG R_l = {PDG_R_LEPTON})")
+    print(f"  sigma_peak_qq / mean lepton sigma_peak = {r_l:.2f} +/- {r_l_err:.2f}   (PDG R_l = {PDG_R_LEPTON}; not R_l itself:\n"
+          "      a lepton Breit-Wigner also absorbs the photon-exchange term, see the improved-Born fit)")
     print(f"  sigma_mumu / sigma_tautau at peak = {ratio:.4f} +/- {ratio_err:.4f}   (lepton universality: 1)")
-    print(f"  sigma0_had = {had:.2f} +/- {fit.errors['sigma_peak_qq']:.2f} nb   (PDG {PDG_SIGMA0_HAD_NB})")
 
 
 def _propagate(fit: Minuit, function, step: float = 1e-6) -> tuple[float, float]:
@@ -292,18 +292,21 @@ def _propagate(fit: Minuit, function, step: float = 1e-6) -> tuple[float, float]
 
 
 def joint_pole_quantities(fit: Minuit) -> dict:
-    """sigma0_had (Z term of the qq model at the pole, times its fitted
-    normalisation) and R_l = Gamma_had / Gamma_ll (the ratio of the qq and
-    mean-lepton Z terms at the pole), with errors from the full covariance.
-    Both lean on the Standard Model couplings with one sin2(theta_W_eff) to
-    split each channel's cross section into Z, photon and interference."""
+    """sigma0_had in LEP's convention (Z term of the qq model at the pole,
+    times its fitted normalisation, times DELTA_QED) and R_l = Gamma_had /
+    Gamma_ll (the ratio of the qq and mean-lepton Z terms at the pole, in
+    which DELTA_QED cancels), with errors from the full covariance. Both
+    lean on the Standard Model couplings with one sin2(theta_W_eff) to split
+    each channel's cross section into Z, photon and interference."""
+
+    def born_pole(v, norm, channel):
+        return norm * float(z_term_cross_section_nb(v["mZ"], v["mZ"], v["gammaZ"], channel))
 
     def sigma0_had(v):
-        return v["norm_qq"] * float(z_term_cross_section_nb(v["mZ"], v["mZ"], v["gammaZ"], "qq"))
+        return born_pole(v, v["norm_qq"], "qq") * DELTA_QED
 
     def r_lepton(v):
-        lepton = (v["norm_mumu"] + v["norm_tautau"]) / 2 * float(z_term_cross_section_nb(v["mZ"], v["mZ"], v["gammaZ"], "mumu"))
-        return sigma0_had(v) / lepton
+        return born_pole(v, v["norm_qq"], "qq") / born_pole(v, (v["norm_mumu"] + v["norm_tautau"]) / 2, "mumu")
 
     s0, s0_err = _propagate(fit, sigma0_had)
     r, r_err = _propagate(fit, r_lepton)
@@ -474,8 +477,16 @@ def main() -> None:
         fit_joint_iba_lower = joint_fit(data, model={ch: improved_born_isr(ch) for ch in JOINT_CHANNELS}, prefix="norm",
                                         start_norms={"qq": 3.1, "mumu": 1.0, "tautau": 1.0})
     mz_low, gz_low = fixed_to_running_width(fit_joint_iba_lower.values["mZ"], fit_joint_iba_lower.values["gammaZ"])
-    print(f"  radiator truncation ({ccs.ISR_RADIATOR} - {lower}) for this fit: mZ {(mz_iba - mz_low) * 1e3:+.1f} MeV, "
-          f"gammaZ {(gz_iba - gz_low) * 1e3:+.1f} MeV")
+    trunc_m, trunc_g = (mz_iba - mz_low) * 1e3, (gz_iba - gz_low) * 1e3
+    print(f"  radiator truncation ({ccs.ISR_RADIATOR} - {lower}) for this fit: mZ {trunc_m:+.1f} MeV, gammaZ {trunc_g:+.1f} MeV")
+    print("  with systematics (radiator truncation, LEP energy calibration), running-width convention:")
+    for name, value, fit_err, syst, pdg, pdg_err in [
+        ("mZ", mz_iba, fit_joint_iba.errors["mZ"], np.hypot(trunc_m, ccs.ENERGY_SCALE_MZ_MEV) / 1e3, PDG_MZ_GEV, PDG_MZ_ERR_GEV),
+        ("gammaZ", gz_iba, fit_joint_iba.errors["gammaZ"], np.hypot(trunc_g, ccs.ENERGY_SCALE_GAMMAZ_MEV) / 1e3,
+         PDG_GAMMAZ_GEV, PDG_GAMMAZ_ERR_GEV),
+    ]:
+        total = np.sqrt(fit_err**2 + syst**2 + pdg_err**2)
+        print(f"    {name:7s} = {value:.4f} +/- {fit_err:.4f} (fit) +/- {syst:.4f} (syst) GeV, {(value - pdg) / total:+.2f} sigma from PDG")
     print(
         "  The Breit-Wigner fits above leave out the photon-exchange term, which is\n"
         "  what most of their pull vs. PDG on Gamma_Z is. Their pulls use the fit error\n"
