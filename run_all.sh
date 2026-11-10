@@ -3,7 +3,7 @@
 # before each step saying what it does. Safe to re-run; everything it writes
 # goes to data/processed/ (gitignored).
 #
-#   ./run_all.sh              # tests + all MG5-free steps (~8 min, mostly the pull study)
+#   ./run_all.sh              # tests + all MG5-free steps (~10 min: pull study 5, extensions 4)
 #   N_TOYS=50 ./run_all.sh    # quicker pull study
 #   MG5_PATH=/path/to/bin/mg5_aMC ./run_all.sh   # also runs the MadGraph5 closure tests
 #

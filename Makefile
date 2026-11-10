@@ -1,7 +1,7 @@
 # Reproduce every number and figure in README.md.
 #
 #   make test       regression tests (~10 s)
-#   make results    run the four MG5-free analysis scripts (~8 min, mostly the pull study)
+#   make results    run the four MG5-free analysis scripts (~10 min: pull study 5, extensions 4)
 #   make figures    refresh the plots README.md embeds (figures/), re-running only
 #                   the scripts whose inputs changed since their last run
 #   make all        test + figures
