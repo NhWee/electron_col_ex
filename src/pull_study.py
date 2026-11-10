@@ -22,6 +22,14 @@ analysis would, and reused for every toy.
     python src/pull_study.py            # 500 toys, ~5 minutes
     python src/pull_study.py --n-toys 50
     python src/pull_study.py --replot      # new summary/plot from the saved toys
+    python src/pull_study.py --expected-errors   # check of the chi2 bias, see below
+
+A least-squares fit that takes each point's error from its own observed
+count is slightly biased: a downward fluctuation gets a smaller error and so
+more weight. --expected-errors gives every point the error expected from the
+truth model instead, which no real analysis can do, to show how much of the
+small Gamma_Z bias is this effect. Its outputs carry the suffix
+_expected_errors and are not used by the README figures.
 """
 
 import argparse
@@ -41,14 +49,17 @@ from compute_cross_section import (
     MUTED,
     ORANGE,
     SURFACE,
+    breit_wigner_isr,
     fit_breit_wigner,
     fit_breit_wigner_isr,
 )
 from simulate_mumu import (
+    LUMI_PBINV,
     SCAN_POINTS_GEV,
     SIN2_THETAW_EFF,
     TRUE_GAMMAZ_GEV,
     TRUE_MZ_GEV,
+    TRUE_SIGMA_PEAK_NB,
     afb_errors,
     asymmetric_pull,
     fit_afb,
@@ -66,9 +77,19 @@ PULL_COLUMNS = {
 }
 
 
-def one_toy(seed: int, a_hat: float, a_hat_err: float) -> dict:
+def expected_point_errors(a_hat: float) -> np.ndarray:
+    """Cross-section error of each scan point if its selected-event count
+    were exactly the truth model's expectation (--expected-errors)."""
+    sigma_true = breit_wigner_isr(SCAN_POINTS_GEV, TRUE_SIGMA_PEAK_NB, TRUE_MZ_GEV, TRUE_GAMMAZ_GEV)
+    n_selected = LUMI_PBINV * sigma_true * 1000 * a_hat
+    return np.sqrt(n_selected) / a_hat / LUMI_PBINV / 1000
+
+
+def one_toy(seed: int, a_hat: float, a_hat_err: float, expected_err: np.ndarray | None = None) -> dict:
     rng = np.random.default_rng(seed)
     scan = pd.DataFrame([generate_scan_point(x, a_hat, a_hat_err, rng) for x in SCAN_POINTS_GEV])
+    if expected_err is not None:
+        scan["sigma_computed_err_nb"] = expected_err
 
     naive = fit_breit_wigner(scan)
     isr = fit_breit_wigner_isr(scan)
@@ -113,6 +134,8 @@ def summarize(results: pd.DataFrame) -> pd.DataFrame:
                 width=std,
                 width_err=std / np.sqrt(2 * (n - 1)),
                 frac_within_1sigma=np.mean(np.abs(p) < 1),
+                frac_above_1sigma=np.mean(p > 1),
+                frac_below_minus_1sigma=np.mean(p < -1),
             )
         )
     return pd.DataFrame(rows)
@@ -168,19 +191,25 @@ def main() -> None:
     parser.add_argument("--first-seed", type=int, default=1_000)
     parser.add_argument("--replot", action="store_true",
                         help="redo the summary and plot from the saved pull_study_toys.csv, without new toys")
+    parser.add_argument("--expected-errors", action="store_true",
+                        help="use the truth model's expected error for every cross-section point (chi2-bias check)")
     args = parser.parse_args()
 
-    toys_csv = DATA_PROCESSED / "pull_study_toys.csv"
+    suffix = "_expected_errors" if args.expected_errors else ""
+    toys_csv = DATA_PROCESSED / f"pull_study_toys{suffix}.csv"
     if args.replot:
         results = pd.read_csv(toys_csv)
         print(f"Re-summarising {len(results)} toys from {toys_csv}")
     else:
         a_hat, a_hat_err = measure_acceptance(np.random.default_rng(20260801))
         print(f"Acceptance A_hat = {a_hat:.4f} +/- {a_hat_err:.4f} (measured once, reused for every toy)")
+        expected_err = expected_point_errors(a_hat) if args.expected_errors else None
+        if args.expected_errors:
+            print("Cross-section errors: expected from the truth model, not from each toy's own counts.")
 
         results = []
         for i in range(args.n_toys):
-            results.append(one_toy(args.first_seed + i, a_hat, a_hat_err))
+            results.append(one_toy(args.first_seed + i, a_hat, a_hat_err, expected_err))
             if (i + 1) % 50 == 0 or i + 1 == args.n_toys:
                 print(f"  {i + 1}/{args.n_toys} toys done")
         results = pd.DataFrame(results)
@@ -202,16 +231,20 @@ def main() -> None:
     print(summary.to_string(index=False))
     print(
         "\n  A correct, unbiased fit with correct errors has mean 0 and width 1\n"
-        "  (68.3% within |pull| < 1). The naive fit is expected to fail this\n"
+        "  (68.3% within |pull| < 1, 15.9% beyond on each side). The naive fit is expected to fail this\n"
         "  badly -- it ignores ISR -- and is shown as the control. The\n"
         "  sin2(theta_W) chi2 is not parabolic, so compare its Hesse pull with\n"
         "  the MINOS one."
     )
-    summary.to_csv(DATA_PROCESSED / "pull_study_summary.csv", index=False)
-    saved = DATA_PROCESSED / "pull_study_summary.csv"
+    for name, column, truth in [("M_Z", "mZ_isr", TRUE_MZ_GEV), ("Gamma_Z", "gammaZ_isr", TRUE_GAMMAZ_GEV)]:
+        bias = (results[column] - truth) * 1e3
+        print(f"  ISR-convolved fit, {name}: mean (fit - truth) = {bias.mean():+.1f} +/- {bias.std(ddof=1) / np.sqrt(len(bias)):.1f} MeV, "
+              f"mean fit error {results[column + '_err'].mean() * 1e3:.1f} MeV, mean chi2 {results['chi2_isr'].mean():.2f}")
+    saved = DATA_PROCESSED / f"pull_study_summary{suffix}.csv"
+    summary.to_csv(saved, index=False)
     print(f"\nSaved {saved}" + ("" if args.replot else f" and {toys_csv}"))
 
-    plot_pulls(results, summary, DATA_PROCESSED / "pull_study.png")
+    plot_pulls(results, summary, DATA_PROCESSED / f"pull_study{suffix}.png")
 
 
 if __name__ == "__main__":

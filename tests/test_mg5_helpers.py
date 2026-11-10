@@ -101,3 +101,21 @@ def test_analyse_scan_runs_on_a_toy_scan(tmp_path, isr_on):
     tag = "_isr" if isr_on else ""
     assert (tmp_path / f"simulated_mumu_mg5{tag}_closure.png").exists()
     assert (tmp_path / f"simulated_mumu_mg5{tag}_afb.png").exists()
+
+
+def test_isr_fit_of_radiation_free_data_is_biased_low():
+    """README section 3 without MadGraph5: on a lineshape generated with no
+    ISR (noiseless, at the param_card truth and luminosity of that section)
+    the naive fit is exact and the ISR-convolved fit over-corrects, by about
+    -8 sigma on M_Z and -6 sigma on Gamma_Z."""
+    mz, gz = 91.1880, 2.4414
+    x = sm.SCAN_POINTS_GEV
+    y = ccs.breit_wigner(x, 2.0, mz, gz)
+    n_selected = mg5.LUMI_PBINV_MG5 * y * 1000 * 0.9595
+    scan = pd.DataFrame({"sqrt_s_GeV": x, "sigma_computed_nb": y, "sigma_computed_err_nb": y / np.sqrt(n_selected)})
+    naive = ccs.fit_breit_wigner(scan)
+    assert naive.values["mZ"] == pytest.approx(mz, abs=1e-4)
+    assert naive.values["gammaZ"] == pytest.approx(gz, abs=1e-4)
+    isr = ccs.fit_breit_wigner_isr(scan)
+    assert (isr.values["mZ"] - mz) / isr.errors["mZ"] == pytest.approx(-8.3, abs=0.2)
+    assert (isr.values["gammaZ"] - gz) / isr.errors["gammaZ"] == pytest.approx(-5.6, abs=0.2)
