@@ -322,9 +322,9 @@ chi2/ndof = 9.96/14   (Migrad valid: True)
   running-width convention: mZ = 91.1908 GeV, gammaZ = 2.5065 GeV
   sigma0_had = 41.35 +/- 0.05 nb   (PDG 41.481)
   R_l = Gamma_had / Gamma_ll = 20.80 +/- 0.06   (PDG R_l = 20.767)
-  with systematics (radiator truncation, LEP energy calibration), running-width convention:
+  with systematics (radiator truncation, LEP energy calibration, lepton luminosity), running-width convention:
     mZ      = 91.1908 +/- 0.0035 (fit) +/- 0.0040 (syst) GeV, +0.56 sigma from PDG
-    gammaZ  = 2.5065 +/- 0.0058 (fit) +/- 0.0047 (syst) GeV, +1.41 sigma from PDG
+    gammaZ  = 2.5065 +/- 0.0058 (fit) +/- 0.0050 (syst) GeV, +1.38 sigma from PDG
 ```
 qq 채널 덕분에 피팅 오차가 3.5 MeV까지 줄어 계통오차(4.0 MeV)와 같은 크기가
 됐다. 여기서부터는 데이터를 더 넣는 것보다 모형(더 높은 차수의 복사 보정,

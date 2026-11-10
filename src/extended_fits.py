@@ -479,11 +479,25 @@ def main() -> None:
     mz_low, gz_low = fixed_to_running_width(fit_joint_iba_lower.values["mZ"], fit_joint_iba_lower.values["gammaZ"])
     trunc_m, trunc_g = (mz_iba - mz_low) * 1e3, (gz_iba - gz_low) * 1e3
     print(f"  radiator truncation ({ccs.ISR_RADIATOR} - {lower}) for this fit: mZ {trunc_m:+.1f} MeV, gammaZ {trunc_g:+.1f} MeV")
-    print("  with systematics (radiator truncation, LEP energy calibration), running-width convention:")
+    # Table 1 lists the qq luminosity. For the two lepton channels, refit with
+    # OPAL's measured cross sections (f N / L_channel, same relative errors),
+    # as the 'data' row of the single-channel error budget does.
+    own_lumi = data.copy()
+    leptons = own_lumi["channel"].isin(TRACK_CHANNELS)
+    scale = own_lumi.loc[leptons, "xsec_measured_nb"] / own_lumi.loc[leptons, "sigma_computed_nb"]
+    for column in ["sigma_computed_nb", *ERROR_COLUMNS]:
+        own_lumi.loc[leptons, column] = own_lumi.loc[leptons, column] * scale
+    fit_joint_iba_lumi = joint_fit(own_lumi, model={ch: improved_born_isr(ch) for ch in JOINT_CHANNELS}, prefix="norm",
+                                   start_norms={"qq": 3.1, "mumu": 1.0, "tautau": 1.0})
+    mz_lumi, gz_lumi = fixed_to_running_width(fit_joint_iba_lumi.values["mZ"], fit_joint_iba_lumi.values["gammaZ"])
+    lumi_m, lumi_g = (mz_lumi - mz_iba) * 1e3, (gz_lumi - gz_iba) * 1e3
+    print(f"  lepton-channel luminosity (L_mumu, L_tautau instead of Table 1's L_qq) for this fit: mZ {lumi_m:+.1f} MeV, gammaZ {lumi_g:+.1f} MeV")
+    print("  with systematics (radiator truncation, LEP energy calibration, lepton luminosity), running-width convention:")
+    syst_m = np.sqrt(trunc_m**2 + ccs.ENERGY_SCALE_MZ_MEV**2 + lumi_m**2) / 1e3
+    syst_g = np.sqrt(trunc_g**2 + ccs.ENERGY_SCALE_GAMMAZ_MEV**2 + lumi_g**2) / 1e3
     for name, value, fit_err, syst, pdg, pdg_err in [
-        ("mZ", mz_iba, fit_joint_iba.errors["mZ"], np.hypot(trunc_m, ccs.ENERGY_SCALE_MZ_MEV) / 1e3, PDG_MZ_GEV, PDG_MZ_ERR_GEV),
-        ("gammaZ", gz_iba, fit_joint_iba.errors["gammaZ"], np.hypot(trunc_g, ccs.ENERGY_SCALE_GAMMAZ_MEV) / 1e3,
-         PDG_GAMMAZ_GEV, PDG_GAMMAZ_ERR_GEV),
+        ("mZ", mz_iba, fit_joint_iba.errors["mZ"], syst_m, PDG_MZ_GEV, PDG_MZ_ERR_GEV),
+        ("gammaZ", gz_iba, fit_joint_iba.errors["gammaZ"], syst_g, PDG_GAMMAZ_GEV, PDG_GAMMAZ_ERR_GEV),
     ]:
         total = np.sqrt(fit_err**2 + syst**2 + pdg_err**2)
         print(f"    {name:7s} = {value:.4f} +/- {fit_err:.4f} (fit) +/- {syst:.4f} (syst) GeV, {(value - pdg) / total:+.2f} sigma from PDG")

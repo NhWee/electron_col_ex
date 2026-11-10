@@ -44,7 +44,7 @@ done here.
 | 7 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+18.1\sigma\,/\,+10.4\sigma$ off, the ISR fit $+0.7\sigma\,/\,+0.3\sigma$. Repeated 500 times, the ISR fit's pulls have mean $\approx 0$ and width $\approx 1$ ([pull study](#pull-study)) |
 | 8 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.2289\,^{+0.0043}_{-0.0035}$ from the forward-backward asymmetry (true input 0.23155, $-0.6\sigma$). The asymmetric MINOS errors have the right coverage over 500 toys; the symmetric ones did not |
 | 9 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.5\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work. $A_{\mathrm{FB}}$ gives $\sin^2\theta_W^{\text{on-shell}} = 0.2243 \pm 0.0071$ (truth 0.2222, $+0.3\sigma$) |
-| 10 | What happens with all channels at once? | A joint $qq+\mu\mu+\tau\tau$ fit of the full $\gamma/Z$ model gives $M_Z = 91.1908 \pm 0.0035 \pm 0.0040$ and $\Gamma_Z = 2.5065 \pm 0.0058 \pm 0.0047$ GeV ($+0.6\sigma$, $+1.4\sigma$ from PDG), $R_\ell = 20.80 \pm 0.06$ against OPAL's own $20.823 \pm 0.044$, and $\sigma_{\mu\mu}/\sigma_{\tau\tau} = 1.000 \pm 0.006$ ([section 4](#4-extensions)) |
+| 10 | What happens with all channels at once? | A joint $qq+\mu\mu+\tau\tau$ fit of the full $\gamma/Z$ model gives $M_Z = 91.1908 \pm 0.0035 \pm 0.0040$ and $\Gamma_Z = 2.5065 \pm 0.0058 \pm 0.0050$ GeV ($+0.6\sigma$, $+1.4\sigma$ from PDG), $R_\ell = 20.80 \pm 0.06$ against OPAL's own $20.823 \pm 0.044$, and $\sigma_{\mu\mu}/\sigma_{\tau\tau} = 1.000 \pm 0.006$ ([section 4](#4-extensions)) |
 
 Rows 3 to 6 are the physics result. Rows 7 to 9 are the evidence that row 4
 is not a coincidence. Row 10 is where the fit error meets the systematics.
@@ -995,14 +995,15 @@ compare with PDG. Against the running-width Breit-Wigner the photon terms
 are worth $-2.6$ MeV on $M_Z$ and $-8.6$ MeV on $\Gamma_Z$. That is less than
 for muons alone, because the photon pedestal is five times smaller under the
 hadronic peak, which dominates this fit. With the systematics that apply
-here, radiator truncation ($-3.6$ / $-4.5$ MeV for this fit) and LEP energy
-calibration:
+here -- radiator truncation ($-3.6$ / $-4.5$ MeV for this fit), LEP energy
+calibration ($1.8$ / $1.3$ MeV) and the lepton channels' own luminosity
+($-0.6$ / $-1.5$ MeV) -- the result is
 
-$$M_Z = 91.1908 \pm 0.0035\ (\mathrm{fit}) \pm 0.0040\ (\mathrm{syst})\ \mathrm{GeV}, \qquad \Gamma_Z = 2.5065 \pm 0.0058\ (\mathrm{fit}) \pm 0.0047\ (\mathrm{syst})\ \mathrm{GeV}$$
+$$M_Z = 91.1908 \pm 0.0035\ (\mathrm{fit}) \pm 0.0040\ (\mathrm{syst})\ \mathrm{GeV}, \qquad \Gamma_Z = 2.5065 \pm 0.0058\ (\mathrm{fit}) \pm 0.0050\ (\mathrm{syst})\ \mathrm{GeV}$$
 
-which is $+0.6\sigma$ and $+1.4\sigma$ from PDG. The channel-luminosity term
-of section 1 is not in this systematic: Table 1 does list the hadronic
-luminosity, and the leptons carry little weight here.
+which is $+0.6\sigma$ and $+1.4\sigma$ from PDG. The channel-luminosity
+term, the largest systematic of section 1, is small here: Table 1 does list
+the hadronic luminosity, and the leptons carry little weight.
 
 The same fit gives the classic pole quantities:
 
@@ -1033,7 +1034,7 @@ $20.55 \pm 0.06$, is not $R_\ell$: a lepton Breit-Wigner absorbs the photon
 pedestal, $1\%$ of its peak, while the hadronic one absorbs $0.2\%$.
 
 The joint fit is where this analysis stops being statistics-limited: fit
-errors of $3.5$ and $5.8$ MeV against systematics of $4.0$ and $4.7$ MeV.
+errors of $3.5$ and $5.8$ MeV against systematics of $4.0$ and $5.0$ MeV.
 What would shrink the systematics is a ZFITTER-level radiator, the
 point-by-point covariance of the LEP energy calibration, and luminosities
 that are not rounded to $0.1\ \mathrm{pb}^{-1}$.
