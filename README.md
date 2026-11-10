@@ -38,8 +38,8 @@ done here.
 | 1 | Does $\sigma = fN/L$ reproduce OPAL's published $\mu^+\mu^-$ cross sections? | **6 of 7 points agree to better than 2%**, five of those to better than 0.6% |
 | 2 | What about the 7th? | **1993 "peak" is $-7.4\%$ off**, and only in the two *track-based* channels ($\mu\mu$, $\tau\tau$). It is neither a typo nor a bad measurement: every channel has its own luminosity and the paper's Table 1 lists the hadronic one. The ratio computed/published is exactly $L_{\mathrm{channel}}/L_{qq}$, which makes $L_{\mu\mu}$ $8.15\ \mathrm{pb}^{-1}$ where the table says $8.8$ |
 | 3 | Fit a Breit-Wigner to the clean points, giving $M_Z$, $\Gamma_Z$? | $91.459\,/\,2.792$ GeV, i.e. 271 and 297 MeV above PDG. Good $\chi^2/\mathrm{ndof}$ (0.37/3), wrong answer |
-| 4 | Same fit, with QED initial-state radiation convolved in? | $\mathbf{M_Z = 91.1824 \pm 0.0119\,(\mathrm{fit}) \pm 0.0075\,(\mathrm{syst})}$ GeV, $\mathbf{\Gamma_Z = 2.5161 \pm 0.0196 \pm 0.0136}$ GeV. ISR was worth $-276$ MeV on both |
-| 5 | And with what a Breit-Wigner leaves out? | Photon exchange, $\gamma/Z$ interference and LEP's running-width convention move it to $M_Z = 91.1853$, $\Gamma_Z = 2.4854$ GeV: $-0.2\sigma$ and $-0.4\sigma$ from PDG. The photon term alone is worth $-37$ MeV on $\Gamma_Z$ |
+| 4 | Same fit, with QED initial-state radiation convolved in? | $\mathbf{M_Z = 91.1824 \pm 0.0119\,(\mathrm{fit}) \pm 0.0075\,(\mathrm{syst})}$ GeV, $\mathbf{\Gamma_Z = 2.5163 \pm 0.0195 \pm 0.0135}$ GeV. ISR was worth $-276$ MeV on both |
+| 5 | And with what a Breit-Wigner leaves out? | Photon exchange, $\gamma/Z$ interference and LEP's running-width convention move it to $M_Z = 91.1853$, $\Gamma_Z = 2.4856$ GeV: $-0.2\sigma$ and $-0.4\sigma$ from PDG. The photon term alone is worth $-37$ MeV on $\Gamma_Z$ |
 | 6 | Where does the uncertainty come from? | An [error budget](#error-budget): statistics dominate ($11.6$ / $18.8$ MeV); the per-channel luminosity that Table 1 does not list is the largest systematic ($6.4$ / $12.7$ MeV); truncating the radiator at $\mathcal{O}(\alpha^2)$ costs $3.5$ / $4.6$ MeV |
 | 7 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+18.1\sigma\,/\,+10.4\sigma$ off, the ISR fit $+0.7\sigma\,/\,+0.3\sigma$. Repeated 500 times, the ISR fit's pulls have mean $\approx 0$ and width $\approx 1$ ([pull study](#pull-study)) |
 | 8 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.2289\,^{+0.0043}_{-0.0035}$ from the forward-backward asymmetry (true input 0.23155, $-0.6\sigma$). The asymmetric MINOS errors have the right coverage over 500 toys; the symmetric ones did not |
@@ -57,8 +57,8 @@ is not a coincidence. Row 10 is where the fit error meets the systematics.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt   # or requirements.txt without pytest/Jupyter
 
-python -m pytest                        # 53 regression tests, ~10 s
-python src/compute_cross_section.py     # real OPAL data: rows 1-6 above, ~30 s
+python -m pytest                        # 57 regression tests, ~10 s
+python src/compute_cross_section.py     # real OPAL data: rows 1-6 above, ~20 s
 python src/simulate_mumu.py             # toy-MC closure test: rows 7-8
 python src/pull_study.py                # 500 repeated toys, ~5 min: rows 7-8
 python src/extended_fits.py             # more points, LEP lineshapes, joint fit: row 10, ~4 min
@@ -328,7 +328,7 @@ Term by term:
 |---|---|---|
 | $\beta x^{\beta-1}$ | soft photons, summed to all orders | Kuraev, Fadin, Sov. J. Nucl. Phys. 41 (1985) 466 |
 | $\tfrac34\beta$ and $-\beta(1-x/2)$ | leading-log $\mathcal{O}(\alpha)$: soft+virtual, and one hard photon | same |
-| the two $\beta^2$ terms | leading-log $\mathcal{O}(\alpha^2)$ | Nicrosini, Trentadue, Phys. Lett. B196 (1987) 551 |
+| the two $\beta^2$ terms | leading-log $\mathcal{O}(\alpha^2)$ | same, and Nicrosini, Trentadue, Phys. Lett. B196 (1987) 551 |
 | $\tfrac{\alpha}{\pi}(\tfrac{\pi^2}{3}-\tfrac12) = 0.65\%$ | the non-logarithmic rest of the complete $\mathcal{O}(\alpha)$ soft+virtual correction $\tfrac{\alpha}{\pi}(\tfrac32\ln\tfrac{s}{m_e^2} + \tfrac{\pi^2}{3} - 2)$ | Berends, van Neerven, Burgers, Nucl. Phys. B297 (1988) 429 |
 
 The leading-log terms follow from the QED splitting function
@@ -352,7 +352,7 @@ paper quotes "about 25%" and "about 100 MeV" for the same two effects.
 **How it got here.** Until 2026-11-05 the code used
 $\beta x^{\beta-1}(1 - x/2)$, which integrates to $0.951$ and is kept as
 `qed_radiator_simplified`. The complete $\mathcal{O}(\alpha)$ form moved the
-fitted $M_Z$ by $+7.0$ MeV and $\Gamma_Z$ by $+10.0$ MeV. Adding the
+fitted $M_Z$ by $+7.0$ MeV and $\Gamma_Z$ by $+9.9$ MeV. Adding the
 $\mathcal{O}(\alpha^2)$ terms on 2026-11-08 moved them back by $-3.5$ and
 $-4.6$ MeV. The script prints all of these fits, and the last step is the
 radiator-truncation term of the error budget.
@@ -474,12 +474,12 @@ each point's own rms spread ($\approx 57$ MeV, 5-point Gauss-Hermite).
 
 | Fit | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | $\sigma_{\mathrm{peak}}$ (nb) |
 |---|---|---|---|---|
-| All 7 points, no ISR | 67.88/4 | $91.4621 \pm 0.0106$ | $2.8197 \pm 0.0220$ | $1.5035 \pm 0.0069$ |
-| 6 clean points, no ISR | 0.37/3 | $91.4586 \pm 0.0105$ | $2.7923 \pm 0.0218$ | $1.5222 \pm 0.0073$ |
-| 6 clean points, ISR-convolved (default radiator) | 1.62/3 | $\mathbf{91.1824 \pm 0.0120}$ | $\mathbf{2.5163 \pm 0.0195}$ | $2.0094 \pm 0.0089$ |
-| same, $\mathcal{O}(\alpha)$ radiator | 1.59/3 | $91.1859$ | $2.5208$ | $2.0024$ |
-| same, leading-log terms only | 1.62/3 | $91.1824$ | $2.5164$ | $2.0215$ |
-| same, simplified radiator (pre-2026-11-05) | 1.66/3 | $91.1789$ | $2.5108$ | $2.1688$ |
+| All 7 points, no ISR | 68.37/4 | $91.4621 \pm 0.0106$ | $2.8184 \pm 0.0219$ | $1.5043 \pm 0.0068$ |
+| 6 clean points, no ISR | 0.37/3 | $91.4586 \pm 0.0105$ | $2.7923 \pm 0.0217$ | $1.5222 \pm 0.0072$ |
+| 6 clean points, ISR-convolved (default radiator) | 1.63/3 | $\mathbf{91.1824 \pm 0.0120}$ | $\mathbf{2.5164 \pm 0.0194}$ | $2.0092 \pm 0.0087$ |
+| same, $\mathcal{O}(\alpha)$ radiator | 1.59/3 | $91.1859$ | $2.5210$ | $2.0022$ |
+| same, leading-log terms only | 1.62/3 | $91.1824$ | $2.5165$ | $2.0214$ |
+| same, simplified radiator (pre-2026-11-05) | 1.67/3 | $91.1789$ | $2.5111$ | $2.1687$ |
 | *PDG* | | *$91.1876 \pm 0.0021$* | *$2.4955 \pm 0.0023$* | |
 
 The 0.37/3 in the second row is a warning, not a success: three fit parameters
@@ -488,7 +488,7 @@ construction. A good $\chi^2$ hid a 271 MeV bias.
 
 The third row is the baseline of everything that follows. ISR was worth
 $-276$ MeV on both parameters. $M_Z$ and $\Gamma_Z$ come out almost
-uncorrelated ($+0.03$); the script prints the correlations with every fit.
+uncorrelated ($+0.02$); the script prints the correlations with every fit.
 The last three rows repeat the fit with the other radiators of section 0.5.
 The simplified one needed $\sigma_{\mathrm{peak}} = 2.17$ nb to make up for
 its $0.951$ normalization, against the $\approx 2.0$ nb LEP measured.
@@ -504,8 +504,8 @@ choose. All entries in MeV:
 |---|---|---|---|
 | Statistical (Poisson on $N$) | propagated | 11.6 | 18.8 |
 | $+$ rounding of $L$ to $0.1\ \mathrm{pb}^{-1}$ in Table 1 | propagated | 2.7 | 4.2 |
-| $+$ correction-factor systematic, uncorrelated | propagated | 1.4 | 3.5 |
-| $f$ systematic fully correlated within a year (covariance fit) | shift / error | $-0.0$ / 11.9 | $-0.2$ / 19.6 |
+| $+$ correction-factor systematic, uncorrelated | propagated | 1.4 | 2.9 |
+| $f$ systematic fully correlated within a year (covariance fit) | shift / error | $-0.0$ / 11.9 | $-0.2$ / 19.5 |
 | Radiator truncation ($\mathcal{O}(\alpha^2) - \mathcal{O}(\alpha)$, section 0.5) | model | $-3.5$ | $-4.6$ |
 | Uncertainty of the beam-energy spread ($\pm 1.1$ / $1.3$ MeV) | model | $-0.0$ | $-0.2$ |
 | Channel luminosity ($L_{\mu\mu}$ instead of Table 1's $L_{qq}$) | data | $-6.4$ | $-12.7$ |
@@ -515,7 +515,7 @@ choose. All entries in MeV:
 | *Propagator convention (running width $-$ baseline)* | *convention* | $-0.0$ | $+6.2$ |
 | *Photon exchange and $\gamma/Z$ interference (improved Born $-$ running-width BW)* | *omission* | $+3.0$ | $-36.9$ |
 
-$$M_Z = 91.1824 \pm 0.0119\ (\mathrm{fit}) \pm 0.0075\ (\mathrm{syst})\ \mathrm{GeV}, \qquad \Gamma_Z = 2.5161 \pm 0.0196\ (\mathrm{fit}) \pm 0.0136\ (\mathrm{syst})\ \mathrm{GeV}$$
+$$M_Z = 91.1824 \pm 0.0119\ (\mathrm{fit}) \pm 0.0075\ (\mathrm{syst})\ \mathrm{GeV}, \qquad \Gamma_Z = 2.5163 \pm 0.0195\ (\mathrm{fit}) \pm 0.0135\ (\mathrm{syst})\ \mathrm{GeV}$$
 
 The fit error is the covariance fit of the fourth row. The systematic is the
 quadrature sum of the model, data and external rows. The italic rows are not
@@ -528,7 +528,7 @@ first is a definition (section 0.2). The second is physics the Breit-Wigner
 leaves out, measured by fitting the full improved-Born cross section of
 section 0.3 instead:
 
-$$M_Z = 91.1853\ \mathrm{GeV}, \qquad \Gamma_Z = 2.4854\ \mathrm{GeV}$$
+$$M_Z = 91.1853\ \mathrm{GeV}, \qquad \Gamma_Z = 2.4856\ \mathrm{GeV}$$
 
 with the same errors, $-0.2\sigma$ and $-0.4\sigma$ from PDG. Before that
 step the same data sat at $-0.4\sigma$ and $+1.1\sigma$. The $-37$ MeV on
@@ -916,9 +916,9 @@ as a "borrowed $f$" systematic.
 
 | Points | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) |
 |---|---|---|---|
-| 6 with their own $f$ (section 1) | 1.62/3 | $91.1824 \pm 0.0120$ | $2.5163 \pm 0.0195$ |
-| 12, borrowed $f$ included | 4.69/9 | $91.1818 \pm 0.0119$ | $2.5192 \pm 0.0191$ |
-| 10, without the 1993 prescans | 3.32/7 | $91.1822 \pm 0.0120$ | $2.5185 \pm 0.0192$ |
+| 6 with their own $f$ (section 1) | 1.63/3 | $91.1824 \pm 0.0120$ | $2.5164 \pm 0.0194$ |
+| 12, borrowed $f$ included | 4.69/9 | $91.1818 \pm 0.0119$ | $2.5193 \pm 0.0190$ |
+| 10, without the 1993 prescans | 3.32/7 | $91.1823 \pm 0.0120$ | $2.5186 \pm 0.0191$ |
 
 Almost nothing moves, for a reason the table makes visible: every added point
 sits at the peak, where the lineshape constrains $\sigma_{\mathrm{peak}}$, not
@@ -940,10 +940,10 @@ beam spread):
 
 | Lineshape model | $\chi^2$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | normalization |
 |---|---|---|---|---|
-| non-relativistic BW in $\sqrt{s}$ (baseline) | 1.62 | $91.1823 \pm 0.0119$ | $2.5161 \pm 0.0196$ | $2.009 \pm 0.009$ nb |
-| relativistic, running width $s\Gamma_Z/M_Z$ | 1.82 | $91.1823 \pm 0.0120$ | $2.5223 \pm 0.0197$ | $2.009 \pm 0.009$ nb |
-| improved Born $\gamma + Z + $ interference, fixed width | 1.82 | $91.1515 \pm 0.0121$ | $2.4845 \pm 0.0192$ | $1.003 \pm 0.013$ |
-| the same, converted to the running-width convention | | $91.1853$ | $2.4854$ | |
+| non-relativistic BW in $\sqrt{s}$ (baseline) | 1.63 | $91.1824 \pm 0.0119$ | $2.5162 \pm 0.0195$ | $2.009 \pm 0.009$ nb |
+| relativistic, running width $s\Gamma_Z/M_Z$ | 1.83 | $91.1824 \pm 0.0120$ | $2.5225 \pm 0.0196$ | $2.008 \pm 0.009$ nb |
+| improved Born $\gamma + Z + $ interference, fixed width | 1.82 | $91.1515 \pm 0.0121$ | $2.4846 \pm 0.0191$ | $1.003 \pm 0.013$ |
+| the same, converted to the running-width convention | | $91.1853$ | $2.4856$ | |
 
 The running-width form moves $M_Z$ by $-0.0$ MeV and $\Gamma_Z$ by
 $+6.3$ MeV: the cancellation on $M_Z$ is confirmed, and the width shift is a
@@ -978,8 +978,8 @@ not a resonance.
 
 | Model for each channel | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) |
 |---|---|---|---|
-| Breit-Wigner in $\sqrt{s}$ | 12.40/14 | $91.1935 \pm 0.0035$ | $2.5080 \pm 0.0058$ |
-| Breit-Wigner, running width | 12.81/14 | $91.1934 \pm 0.0035$ | $2.5151 \pm 0.0059$ |
+| Breit-Wigner in $\sqrt{s}$ | 12.41/14 | $91.1935 \pm 0.0035$ | $2.5080 \pm 0.0058$ |
+| Breit-Wigner, running width | 12.81/14 | $91.1934 \pm 0.0035$ | $2.5152 \pm 0.0059$ |
 | **improved Born $\gamma + Z + $ interference**, running-width convention | 9.96/14 | $\mathbf{91.1908 \pm 0.0035}$ | $\mathbf{2.5065 \pm 0.0058}$ |
 | *OPAL's own fit of its full data set* | | *$91.1852 \pm 0.0030$* | *$2.4948 \pm 0.0041$* |
 | *PDG* | | *$91.1876 \pm 0.0021$* | *$2.4955 \pm 0.0023$* |
@@ -1045,9 +1045,12 @@ that are not rounded to $0.1\ \mathrm{pb}^{-1}$.
 ## Data
 
 Everything in `data/raw/` was transcribed by hand from the paper's tables and
-page-checked against the PDF. Table 1 and the $\mu^+\mu^-$ rows of Table 10
-were compared again on 2026-11-08 with the text of the arXiv version; they
-match.
+page-checked against the PDF. In November 2026 every row of the nine
+tables was compared by program with the text of the arXiv version. One
+entry was wrong: the error of the 1994 $\mu^+\mu^-$ correction factor read
+$0.14\%$ where Table 6 has $0.10\%$. It is fixed, and it moved $\Gamma_Z$ by
+$0.1$ MeV. A test now checks each correction-factor table for internal
+consistency, which catches a typo of that kind without the paper.
 
 | File | Paper table | Contents |
 |---|---|---|
