@@ -99,6 +99,25 @@ def born_cross_section_nb(
     return alpha**2 / (4 * sqrt_s**2) * (16 * np.pi / 3) * f1 * GEV2_TO_NB
 
 
+def z_term_cross_section_nb(
+    sqrt_s: np.ndarray,
+    mZ: float,
+    gammaZ: float,
+    channel: str = "mumu",
+    sin2thetaw: float = SIN2_THETAW_EFF,
+) -> np.ndarray:
+    """The Z-exchange term of born_cross_section_nb alone (no photon, no
+    interference); alpha cancels in it. At sqrt_s = mZ it is the pole cross
+    section 12 pi Gamma_ee Gamma_ff / (M_Z^2 Gamma_Z^2), so the ratio of two
+    channels there is the ratio of their partial widths."""
+    sqrt_s = np.asarray(sqrt_s, dtype=float)
+    c = chi(sqrt_s, mZ, gammaZ, ALPHA_0)
+    v_e, a_e = couplings(*ELECTRON, sin2thetaw)
+    coupling_sum = sum((v_e**2 + a_e**2) * sum(x**2 for x in couplings(q, t3, sin2thetaw))
+                       for q, t3 in CHANNEL_FERMIONS[channel])
+    return ALPHA_0**2 / (4 * sqrt_s**2) * (16 * np.pi / 3) * coupling_sum * np.abs(c) ** 2 * GEV2_TO_NB
+
+
 def fixed_to_running_width(mZ_fixed: float, gammaZ_fixed: float) -> tuple[float, float]:
     """Convert fixed-width (M, Gamma) to the running-width convention LEP
     quotes. README 0.2: D_run(s; M, G) = k D_fix(s; M/sqrt(k), G/sqrt(k))

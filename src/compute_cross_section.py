@@ -291,6 +291,7 @@ RADIATOR_LABELS = {
     "o1": "O(alpha) leading-log",
     "simplified": "simplified (pre-2026-11-05)",
 }
+RADIATOR_MATHTEXT = {"o2": r"$\mathcal{O}(\alpha^2)$", "o1": r"$\mathcal{O}(\alpha)$", "simplified": "simplified"}
 # The radiator one order lower, whose difference to this one is the
 # truncation systematic in error_budget().
 LOWER_ORDER = {"o2": "o1", "o1": "simplified", "simplified": "o1"}
@@ -849,7 +850,7 @@ def main() -> None:
         DATA_PROCESSED / "mumu_cross_section.png",
         fit=fit_isr,
         model=with_beam_spread(breit_wigner_isr, clean["sqrt_s_rms_GeV"].mean()),
-        fit_label=f"ISR-convolved Breit-Wigner fit ({ISR_RADIATOR} radiator)",
+        fit_label=f"ISR-convolved Breit-Wigner fit, {RADIATOR_MATHTEXT[ISR_RADIATOR]} radiator",
     )
 
     print("\n=== Cross-channel consistency check (% diff from OPAL 'measured', by channel) ===")

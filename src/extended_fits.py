@@ -66,7 +66,7 @@ from compute_cross_section import (
     select_corrected_points,
     with_beam_spread,
 )
-from electroweak import fixed_to_running_width
+from electroweak import fixed_to_running_width, z_term_cross_section_nb
 
 # PDG 2024 for comparison only
 PDG_R_LEPTON = 20.767
@@ -276,6 +276,40 @@ def print_joint_fit(fit: Minuit, n_points: int) -> None:
     print(f"  sigma0_had = {had:.2f} +/- {fit.errors['sigma_peak_qq']:.2f} nb   (PDG {PDG_SIGMA0_HAD_NB})")
 
 
+def _propagate(fit: Minuit, function, step: float = 1e-6) -> tuple[float, float]:
+    """value and error of function(values dict), from the fit covariance by
+    numerical gradient."""
+    names = list(fit.parameters)
+    values = dict(zip(names, fit.values))
+    central = function(values)
+    grad = np.zeros(len(names))
+    for i, name in enumerate(names):
+        shifted = dict(values)
+        h = step * max(abs(values[name]), 1.0)
+        shifted[name] += h
+        grad[i] = (function(shifted) - central) / h
+    return central, float(np.sqrt(grad @ np.array(fit.covariance) @ grad))
+
+
+def joint_pole_quantities(fit: Minuit) -> dict:
+    """sigma0_had (Z term of the qq model at the pole, times its fitted
+    normalisation) and R_l = Gamma_had / Gamma_ll (the ratio of the qq and
+    mean-lepton Z terms at the pole), with errors from the full covariance.
+    Both lean on the Standard Model couplings with one sin2(theta_W_eff) to
+    split each channel's cross section into Z, photon and interference."""
+
+    def sigma0_had(v):
+        return v["norm_qq"] * float(z_term_cross_section_nb(v["mZ"], v["mZ"], v["gammaZ"], "qq"))
+
+    def r_lepton(v):
+        lepton = (v["norm_mumu"] + v["norm_tautau"]) / 2 * float(z_term_cross_section_nb(v["mZ"], v["mZ"], v["gammaZ"], "mumu"))
+        return sigma0_had(v) / lepton
+
+    s0, s0_err = _propagate(fit, sigma0_had)
+    r, r_err = _propagate(fit, r_lepton)
+    return dict(sigma0_had=s0, sigma0_had_err=s0_err, r_lepton=r, r_lepton_err=r_err)
+
+
 def print_joint_improved_born(fit: Minuit, n_points: int) -> tuple[float, float]:
     """Print the improved-Born joint fit; returns (M_Z, Gamma_Z) converted
     to the running-width convention."""
@@ -292,6 +326,9 @@ def print_joint_improved_born(fit: Minuit, n_points: int) -> tuple[float, float]
     print(f"  norm_mumu / norm_tautau = {fit.values['norm_mumu'] / fit.values['norm_tautau']:.4f}   (lepton universality: 1)")
     print(f"  norm_qq / (3 x mean lepton norm) = {fit.values['norm_qq'] / (3 * lep):.4f}   "
           "(colour-stripped hadronic factor, ~1 + alpha_s/pi ~ 1.04 expected)")
+    pole = joint_pole_quantities(fit)
+    print(f"  sigma0_had = {pole['sigma0_had']:.2f} +/- {pole['sigma0_had_err']:.2f} nb   (PDG {PDG_SIGMA0_HAD_NB})")
+    print(f"  R_l = Gamma_had / Gamma_ll = {pole['r_lepton']:.2f} +/- {pole['r_lepton_err']:.2f}   (PDG R_l = {PDG_R_LEPTON})")
     return mz_run, gz_run
 
 
@@ -308,16 +345,19 @@ def _style(ax):
     ax.tick_params(colors=MUTED)
 
 
-def plot_joint(data: pd.DataFrame, fit: Minuit, out_path: Path) -> None:
+def plot_joint(data: pd.DataFrame, fit: Minuit, out_path: Path, model=breit_wigner_isr,
+               prefix: str = "sigma_peak", title: str | None = None) -> None:
+    """`model` and `prefix` as in joint_fit()."""
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.5), facecolor=SURFACE)
     x = np.linspace(89.0, 93.5, 200)
-    model = with_beam_spread(breit_wigner_isr, data["sqrt_s_rms_GeV"].mean())
+    rms = data["sqrt_s_rms_GeV"].mean()
     for ax, ch in zip(axes, JOINT_CHANNELS):
+        channel_model = with_beam_spread(model[ch] if isinstance(model, dict) else model, rms)
         d = data[data["channel"] == ch]
         _style(ax)
         ax.errorbar(d["sqrt_s_GeV"], d["sigma_computed_nb"], yerr=d["sigma_computed_err_nb"], fmt="o", color=BLUE,
                     markersize=7, markeredgewidth=0, elinewidth=2, capsize=3, zorder=3, label="computed from N, L, f")
-        ax.plot(x, model(x, fit.values[f"sigma_peak_{ch}"], fit.values["mZ"], fit.values["gammaZ"]),
+        ax.plot(x, channel_model(x, fit.values[f"{prefix}_{ch}"], fit.values["mZ"], fit.values["gammaZ"]),
                 color=AQUA, lw=2, zorder=1, label="joint ISR-convolved fit")
         ax.set_title(ch, color=INK, loc="left")
         ax.set_xlabel(r"$\sqrt{s}$ (GeV)", color=INK)
@@ -325,8 +365,10 @@ def plot_joint(data: pd.DataFrame, fit: Minuit, out_path: Path) -> None:
     leg = axes[0].legend(frameon=False, fontsize=8)
     for t in leg.get_texts():
         t.set_color(INK)
-    fig.suptitle(f"Joint fit: $M_Z$ = {fit.values['mZ']:.4f} ± {fit.errors['mZ']:.4f} GeV, "
-                 f"$\\Gamma_Z$ = {fit.values['gammaZ']:.4f} ± {fit.errors['gammaZ']:.4f} GeV", color=INK, x=0.01, ha="left")
+    if title is None:
+        title = (f"Joint fit: $M_Z$ = {fit.values['mZ']:.4f} ± {fit.errors['mZ']:.4f} GeV, "
+                 f"$\\Gamma_Z$ = {fit.values['gammaZ']:.4f} ± {fit.errors['gammaZ']:.4f} GeV")
+    fig.suptitle(title, color=INK, x=0.01, ha="left")
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150)
@@ -427,12 +469,23 @@ def main() -> None:
     mz_iba, gz_iba = print_joint_improved_born(fit_joint_iba, len(data))
     print(f"  photon exchange + interference vs. the running-width BW: mZ {(mz_iba - fit_joint_running.values['mZ']) * 1e3:+.1f} MeV, "
           f"gammaZ {(gz_iba - fit_joint_running.values['gammaZ']) * 1e3:+.1f} MeV")
+    lower = ccs.LOWER_ORDER[ccs.ISR_RADIATOR]
+    with ccs._radiator(lower):
+        fit_joint_iba_lower = joint_fit(data, model={ch: improved_born_isr(ch) for ch in JOINT_CHANNELS}, prefix="norm",
+                                        start_norms={"qq": 3.1, "mumu": 1.0, "tautau": 1.0})
+    mz_low, gz_low = fixed_to_running_width(fit_joint_iba_lower.values["mZ"], fit_joint_iba_lower.values["gammaZ"])
+    print(f"  radiator truncation ({ccs.ISR_RADIATOR} - {lower}) for this fit: mZ {(mz_iba - mz_low) * 1e3:+.1f} MeV, "
+          f"gammaZ {(gz_iba - gz_low) * 1e3:+.1f} MeV")
     print(
         "  The Breit-Wigner fits above leave out the photon-exchange term, which is\n"
         "  what most of their pull vs. PDG on Gamma_Z is. Their pulls use the fit error\n"
         "  only, which is smaller than the systematics of the error budget. See README."
     )
-    plot_joint(data, fit_joint, DATA_PROCESSED / "joint_fit.png")
+    plot_joint(data, fit_joint_iba, DATA_PROCESSED / "joint_fit.png",
+               model={ch: improved_born_isr(ch) for ch in JOINT_CHANNELS}, prefix="norm",
+               title=(r"Joint $\gamma/Z$ fit (improved Born, ISR, beam spread), running-width convention: "
+                      f"$M_Z$ = {mz_iba:.4f} ± {fit_joint_iba.errors['mZ']:.4f} GeV, "
+                      f"$\\Gamma_Z$ = {gz_iba:.4f} ± {fit_joint_iba.errors['gammaZ']:.4f} GeV"))
     pd.DataFrame({
         "parameter": list(fit_joint.parameters),
         "value": list(fit_joint.values), "error": list(fit_joint.errors),

@@ -21,6 +21,7 @@ analysis would, and reused for every toy.
 
     python src/pull_study.py            # 500 toys, ~5 minutes
     python src/pull_study.py --n-toys 50
+    python src/pull_study.py --replot      # new summary/plot from the saved toys
 """
 
 import argparse
@@ -119,10 +120,12 @@ def summarize(results: pd.DataFrame) -> pd.DataFrame:
 
 def plot_pulls(results: pd.DataFrame, summary: pd.DataFrame, out_path: Path) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.2), facecolor=SURFACE)
-    # (main column, comparison column, x label, main label, comparison label)
+    # (main column, comparison column, x label, main label, comparison label).
+    # The naive fit's pulls (+10 to +18) are off this axis: they are quoted
+    # in a note rather than drawn as a clipped bar that would flatten the rest.
     panels = [
-        ("pull_mZ_isr", "pull_mZ_naive", r"$M_Z$", "ISR-convolved fit", "naive fit (clipped at ±5)"),
-        ("pull_gammaZ_isr", "pull_gammaZ_naive", r"$\Gamma_Z$", "ISR-convolved fit", "naive fit (clipped at ±5)"),
+        ("pull_mZ_isr", "pull_mZ_naive", r"$M_Z$", "ISR-convolved fit", None),
+        ("pull_gammaZ_isr", "pull_gammaZ_naive", r"$\Gamma_Z$", "ISR-convolved fit", None),
         ("pull_sin2w_minos", "pull_sin2w", r"$\sin^2\theta_W^{\rm eff}$", r"$A_{FB}$ fit, MINOS error", "same, Hesse error"),
     ]
     bins = np.linspace(-5, 5, 41)
@@ -130,8 +133,13 @@ def plot_pulls(results: pd.DataFrame, summary: pd.DataFrame, out_path: Path) -> 
     for ax, (main_col, other_col, label, main_label, other_label) in zip(axes, panels):
         ax.set_facecolor(SURFACE)
         ax.hist(results[main_col], bins=bins, color=BLUE, alpha=0.85, label=main_label)
-        clipped = np.clip(results[other_col], -4.9, 4.9)
-        ax.hist(clipped, bins=bins, color=ORANGE, alpha=0.5, label=other_label)
+        if other_label is not None:
+            ax.hist(results[other_col], bins=bins, color=ORANGE, alpha=0.5, label=other_label)
+        else:
+            naive = results[other_col]
+            ax.text(0.98, 0.97, f"naive fit (no ISR):\nmean pull {naive.mean():+.1f},\n"
+                    f"{np.mean(naive > 5):.0%} of toys beyond +5", transform=ax.transAxes,
+                    ha="right", va="top", fontsize=7.5, color=ORANGE)
         row = summary[summary["column"] == main_col].iloc[0]
         n = len(results)
         ax.plot(x, n * (bins[1] - bins[0]) * norm.pdf(x, row["mean"], row["width"]), color=AQUA, lw=2,
@@ -158,20 +166,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--n-toys", type=int, default=500)
     parser.add_argument("--first-seed", type=int, default=1_000)
+    parser.add_argument("--replot", action="store_true",
+                        help="redo the summary and plot from the saved pull_study_toys.csv, without new toys")
     args = parser.parse_args()
 
-    a_hat, a_hat_err = measure_acceptance(np.random.default_rng(20260801))
-    print(f"Acceptance A_hat = {a_hat:.4f} +/- {a_hat_err:.4f} (measured once, reused for every toy)")
+    toys_csv = DATA_PROCESSED / "pull_study_toys.csv"
+    if args.replot:
+        results = pd.read_csv(toys_csv)
+        print(f"Re-summarising {len(results)} toys from {toys_csv}")
+    else:
+        a_hat, a_hat_err = measure_acceptance(np.random.default_rng(20260801))
+        print(f"Acceptance A_hat = {a_hat:.4f} +/- {a_hat_err:.4f} (measured once, reused for every toy)")
 
-    results = []
-    for i in range(args.n_toys):
-        results.append(one_toy(args.first_seed + i, a_hat, a_hat_err))
-        if (i + 1) % 50 == 0 or i + 1 == args.n_toys:
-            print(f"  {i + 1}/{args.n_toys} toys done")
-    results = pd.DataFrame(results)
+        results = []
+        for i in range(args.n_toys):
+            results.append(one_toy(args.first_seed + i, a_hat, a_hat_err))
+            if (i + 1) % 50 == 0 or i + 1 == args.n_toys:
+                print(f"  {i + 1}/{args.n_toys} toys done")
+        results = pd.DataFrame(results)
 
-    DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
-    results.to_csv(DATA_PROCESSED / "pull_study_toys.csv", index=False)
+        DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
+        results.to_csv(toys_csv, index=False)
 
     n_bad = int((~results["isr_valid"]).sum() + (~results["afb_valid"]).sum())
     if n_bad:
@@ -193,7 +208,8 @@ def main() -> None:
         "  the MINOS one."
     )
     summary.to_csv(DATA_PROCESSED / "pull_study_summary.csv", index=False)
-    print(f"\nSaved tables to {DATA_PROCESSED / 'pull_study_toys.csv'} and {DATA_PROCESSED / 'pull_study_summary.csv'}")
+    saved = DATA_PROCESSED / "pull_study_summary.csv"
+    print(f"\nSaved {saved}" + ("" if args.replot else f" and {toys_csv}"))
 
     plot_pulls(results, summary, DATA_PROCESSED / "pull_study.png")
 
