@@ -64,3 +64,17 @@ def test_computed_over_measured_is_the_luminosity_ratio(seven_points):
     mumu = ccs.compute_channel(seven_points, "mumu")
     row = mumu[(mumu["year"] == 1993) & (mumu["sample"] == "peak")]
     assert ccs.implied_channel_luminosity(row).iloc[0] == pytest.approx(8.15, abs=0.01)
+
+
+@pytest.mark.parametrize("channel", list(ccs.CHANNELS))
+def test_correction_factor_tables_are_internally_consistent(channel):
+    """Each table lists a signal and a background correction and their
+    total. The total f must be their product and its error their quadrature
+    sum, to the precision the paper prints (its own tau+tau- totals are off
+    the product by up to 3.4e-4). This is the check that exposes a mistyped
+    total: the 1994 mu+mu- error read 0.14 instead of 0.10 until 2026-11."""
+    t = pd.read_csv(ccs.DATA_RAW / ccs.CHANNELS[channel]["corrections_file"])
+    product = t["signal_correction_f"] * t["background_correction_f"]
+    assert (product - t["total_correction_f"]).abs().max() < 5e-4
+    quadrature = (t["signal_df_over_f_pct"] ** 2 + t["background_df_over_f_pct"] ** 2) ** 0.5
+    assert (quadrature - t["total_df_over_f_pct"]).abs().max() < 0.015

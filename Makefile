@@ -18,8 +18,10 @@ OUT := data/processed
 STAMPS := $(OUT)/.stamps
 
 RAW := $(wildcard data/raw/*.csv)
-CORE := src/compute_cross_section.py src/electroweak.py $(RAW)
-TOY := $(CORE) src/simulate_mumu.py
+CODE := src/compute_cross_section.py src/electroweak.py
+# the real-data scripts read data/raw/, the toy scripts do not
+CORE := $(CODE) $(RAW)
+TOY := $(CODE) src/simulate_mumu.py
 
 FIGURES := figures/opal_mumu_lineshape.png figures/closure_toy_lineshape.png \
            figures/closure_toy_afb.png figures/pull_study.png \
