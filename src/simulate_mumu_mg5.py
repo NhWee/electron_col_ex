@@ -46,11 +46,19 @@ beta at the nominal s, so Q is fixed to sqrt(s) for both beams (MG5's
 default is a dynamical scale). cos(theta) is evaluated in the
 post-radiation e+e- rest frame, read from each event's incoming legs.
 
-The --isr path has not been run yet. Its run_card settings (lpp = -3/+3,
-pdlabel = isronlyll, mmll, fixed_fac_scale, dsqrt_q2fact1/2) were checked
-on 2026-11-08 against the run_card definitions in MadGraph5 v3.5.17's
-madgraph/various/banner.py, without running MG5. MG5 refuses unknown
-names, so a mismatch in another version fails loudly.
+The fit model is matched to that generator setup (configure_fit_for_mg5_isr):
+MG5's `isronlyll` PDF is the O(alpha^2) leading-log structure function with
+alpha = 1/132.23 hard-coded, so the fit uses the leading-log radiator "o2ll"
+with the same alpha in beta.
+
+The full --isr scan has not been completed yet. A first attempt on MG5
+3.5.0 (2026-11-05) got through the acceptance sample, which shows that MG5
+accepts lpp = -3/+3, pdlabel = isronlyll and mmll, and then stalled on an
+unanswered prompt, which _run_mg5 now avoids. The remaining settings
+(fixed_fac_scale, dsqrt_q2fact1/2) were checked on 2026-11-08 against the
+run_card definitions in MadGraph5 v3.5.17's madgraph/various/banner.py,
+without running MG5. MG5 refuses unknown names, so a mismatch in another
+version fails loudly.
 
 --refit re-analyses the scan table an earlier run saved
 (data/processed/simulated_mumu_mg5[_isr]_scan.csv) with the current fit
@@ -84,6 +92,20 @@ PROCESS_DIR = DATA_PROCESSED / "mg5_eemumu"
 
 ISR_ON = False  # set by --isr
 SPRIME_MIN_FRACTION = 0.9  # sqrt(s')/sqrt(s) cut used only with ISR on
+
+# What MadGraph5's `isronlyll` electron PDF is, so that the fit can use the
+# same radiator. Frixione, Mattelaer, Zaro, Zhao, arXiv:2108.10261,
+# eqs. (45)-(48): per beam, with beta = alpha/pi (ln(mu^2/m_e^2) - 1),
+#   Gamma(z) = exp(3 beta/4 - gamma_E beta)/Gamma(1+beta) beta (1-z)^(beta-1)
+#              - beta/2 (1+z)
+#              - beta^2/8 [(1+3z^2)/(1-z) ln z + 4(1+z) ln(1-z) + 5 + z]
+# This is the single-electron structure function whose two-beam convolution
+# the leading-log radiator "o2ll" is tested against (tests/test_physics.py),
+# with no non-logarithmic O(alpha) term. Its alpha is hard-coded in
+# lep_densities/isronlyll/gridpdfaux.f (read in MG5 v3.5.17):
+#   data alphaem/0.007562397d0/     i.e. 1/132.23, not alpha(0) = 1/137.04
+MG5_ISR_ALPHA = 0.007562397
+MG5_ISR_RADIATOR = "o2ll"
 
 LUMI_PBINV_MG5 = 0.3  # smaller than simulate_mumu.py's 2.0 pb^-1, to keep each MG5 launch fast
 EVENTS_PER_LAUNCH = 1200  # headroom above the on-peak Poisson mean (~600 at L=0.3 pb^-1)
@@ -373,6 +395,17 @@ def run_scan_mg5(rng: np.random.Generator, truth: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def configure_fit_for_mg5_isr() -> None:
+    """Make the ISR-convolved fit model the same radiator the generator
+    uses with --isr: MG5's alpha in beta, leading-log terms only, and the
+    radiator integral cut where the generator-level sqrt(s') cut is. Fitting
+    with alpha(0) instead would under-correct by 3.6% of the ISR shift,
+    about +10 MeV on M_Z."""
+    ccs.ISR_ALPHA = MG5_ISR_ALPHA
+    ccs.ISR_RADIATOR = MG5_ISR_RADIATOR
+    ccs.ISR_X_MAX = 1 - SPRIME_MIN_FRACTION**2
+
+
 def scan_csv_path(isr_on: bool, out_dir: Path = DATA_PROCESSED) -> Path:
     return out_dir / f"simulated_mumu_mg5{'_isr' if isr_on else ''}_scan.csv"
 
@@ -480,11 +513,11 @@ def main() -> None:
     args = parser.parse_args()
     ISR_ON = args.isr
     if ISR_ON:
-        # match the fit's radiator integral to the generator-level sqrt(s') cut
-        ccs.ISR_X_MAX = 1 - SPRIME_MIN_FRACTION**2
+        configure_fit_for_mg5_isr()
         print(
-            f"ISR ON: lpp=-/+3, pdlabel=isronlyll, factorization scale = sqrt(s), sqrt(s')/sqrt(s) > {SPRIME_MIN_FRACTION} "
-            f"(fit radiator truncated at x_max = {ccs.ISR_X_MAX:.3f})"
+            f"ISR ON: lpp=-/+3, pdlabel=isronlyll, factorization scale = sqrt(s), sqrt(s')/sqrt(s) > {SPRIME_MIN_FRACTION}\n"
+            f"  fit radiator matched to MG5's electron PDF: {ccs.RADIATOR_LABELS[ccs.ISR_RADIATOR]}, "
+            f"alpha = 1/{1 / ccs.ISR_ALPHA:.2f} in beta, truncated at x_max = {ccs.ISR_X_MAX:.3f}"
         )
 
     if not args.refit:

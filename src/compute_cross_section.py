@@ -78,6 +78,11 @@ PDG_GAMMAZ_ERR_GEV = 0.0023
 ALPHA_QED = ALPHA_0  # alpha(0): the radiator's beta and the A_FB fits use it
 M_ELECTRON_GEV = 0.000511
 
+# The alpha in the radiator's beta. alpha(0) is the right coupling for real
+# photons and what ZFITTER uses. simulate_mumu_mg5.py --isr overrides it,
+# because MadGraph5's electron PDFs are built with a different value.
+ISR_ALPHA = ALPHA_QED
+
 # Table 1 lists L to one decimal in pb^-1: a uniform rounding error.
 L_ROUNDING_ERR_PBINV = 0.1 / np.sqrt(12)
 
@@ -263,7 +268,7 @@ def isr_beta(sqrt_s: float) -> float:
     probability; s here is the nominal sqrt(s) of the collision, not the
     reduced one after radiating."""
     s = sqrt_s**2
-    return (2 * ALPHA_QED / np.pi) * (np.log(s / M_ELECTRON_GEV**2) - 1)
+    return (2 * ISR_ALPHA / np.pi) * (np.log(s / M_ELECTRON_GEV**2) - 1)
 
 
 def _soft_simplified(beta: float) -> float:

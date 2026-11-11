@@ -119,3 +119,46 @@ def test_isr_fit_of_radiation_free_data_is_biased_low():
     isr = ccs.fit_breit_wigner_isr(scan)
     assert (isr.values["mZ"] - mz) / isr.errors["mZ"] == pytest.approx(-8.3, abs=0.2)
     assert (isr.values["gammaZ"] - gz) / isr.errors["gammaZ"] == pytest.approx(-5.6, abs=0.2)
+
+
+@pytest.fixture
+def restore_isr_settings():
+    """configure_fit_for_mg5_isr() changes module-level fit settings."""
+    saved = (ccs.ISR_ALPHA, ccs.ISR_RADIATOR, ccs.ISR_X_MAX)
+    yield
+    ccs.ISR_ALPHA, ccs.ISR_RADIATOR, ccs.ISR_X_MAX = saved
+
+
+def test_fit_radiator_is_matched_to_mg5_electron_pdf(restore_isr_settings):
+    """MG5's isronlyll PDF has alpha = 0.007562397 = 1/132.23 hard-coded
+    (lep_densities/isronlyll/gridpdfaux.f) and no non-log O(alpha) term, so
+    with --isr the fit uses the leading-log radiator with that alpha: beta
+    is 3.6% larger than with alpha(0)."""
+    beta_alpha0 = ccs.isr_beta(91.188)
+    mg5.configure_fit_for_mg5_isr()
+    assert ccs.ISR_RADIATOR == "o2ll"
+    assert 1 / ccs.ISR_ALPHA == pytest.approx(132.23, abs=0.01)
+    assert ccs.ISR_X_MAX == pytest.approx(1 - 0.9**2)
+    assert ccs.isr_beta(91.188) / beta_alpha0 == pytest.approx(1.0363, abs=1e-4)
+    assert ccs.isr_beta(91.188) == pytest.approx(0.1116, abs=1e-4)
+
+
+def test_isr_on_closure_expectation(restore_isr_settings):
+    """What `--isr` should show, on a noiseless copy of it: data generated
+    with MG5's radiator settings are recovered exactly by the matched fit,
+    the naive fit lands ~7 sigma high on M_Z, and a fit that kept alpha(0)
+    would be ~9 MeV high."""
+    mz, gz = 91.1880, 2.4414
+    mg5.configure_fit_for_mg5_isr()
+    x = sm.SCAN_POINTS_GEV
+    y = ccs.breit_wigner_isr(x, 2.0, mz, gz)
+    n_selected = mg5.LUMI_PBINV_MG5 * y * 1000 * 0.96
+    scan = pd.DataFrame({"sqrt_s_GeV": x, "sigma_computed_nb": y, "sigma_computed_err_nb": y / np.sqrt(n_selected)})
+    matched = ccs.fit_breit_wigner_isr(scan)
+    assert matched.values["mZ"] == pytest.approx(mz, abs=2e-4)
+    assert matched.values["gammaZ"] == pytest.approx(gz, abs=5e-4)
+    naive = ccs.fit_breit_wigner(scan)
+    assert (naive.values["mZ"] - mz) / naive.errors["mZ"] == pytest.approx(7.1, abs=0.3)
+    ccs.ISR_ALPHA = ccs.ALPHA_QED
+    mismatched = ccs.fit_breit_wigner_isr(scan)
+    assert (mismatched.values["mZ"] - mz) * 1e3 == pytest.approx(8.7, abs=1.0)

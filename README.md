@@ -57,13 +57,13 @@ is not a coincidence. Row 10 is where the fit error meets the systematics.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt   # or requirements.txt without pytest/Jupyter
 
-python -m pytest                        # 57 regression tests, ~10 s
+python -m pytest                        # 59 regression tests, ~10 s
 python src/compute_cross_section.py     # real OPAL data: rows 1-6 above, ~20 s
 python src/simulate_mumu.py             # toy-MC closure test: rows 7-8
 python src/pull_study.py                # 500 repeated toys, ~5 min: rows 7-8
 python src/extended_fits.py             # more points, LEP lineshapes, joint fit: row 10, ~4 min
 python src/simulate_mumu_mg5.py         # generator-level closure: row 9 (needs MadGraph5)
-python src/simulate_mumu_mg5.py --isr   # same, with MG5's ISR on (MG5 >= 3.2, not yet run)
+python src/simulate_mumu_mg5.py --isr   # same, with MG5's ISR on (MG5 >= 3.2, scan not yet completed)
 ```
 
 Or run everything in order, either way:
@@ -862,22 +862,41 @@ the acceptance sample takes 1-2 minutes.
   oversight -- the project's answer to referencing a real collider's
   generate/detector/analysis structure without the full Pythia8/Delphes/FastJet
   chain that hadronic LHC final states need.
-- **ISR-on mode, written but not yet run.** `--isr` switches on MadGraph5's
-  ($\geq 3.2.0$) leading-log $e^\pm$ structure functions
+- **ISR-on mode: started once, not yet completed.** `--isr` switches on
+  MadGraph5's ($\geq 3.2.0$) leading-log $e^\pm$ structure functions
   ([Frixione et al.](https://arxiv.org/abs/2108.10261); `lpp = -3/+3`,
   `pdlabel = isronlyll`), fixes their factorization scale to $\sqrt{s}$, cuts
   $\sqrt{s'}/\sqrt{s} > 0.9$ through the $\mu^+\mu^-$ invariant mass,
   truncates the fit's radiator integral at the matching $x_{\max}$, evaluates
   $\cos\theta$ in the post-radiation $e^+e^-$ rest frame (boost tested), and
-  feeds the $A_{\mathrm{FB}}$ fit from the ISR-convolved lineshape. The
-  expected outcome is the mirror of the table above: ISR fit
-  $\approx 0\sigma$, naive fit biased high as on OPAL data. This is the test
-  the toy MC cannot provide (the same radiator generates and fits there), and
-  the one remaining logical gap. On 2026-11-08 the run-card settings were
-  checked against the parameter definitions in the MadGraph5 v3.5.17 source,
-  which is how the missing scale setting was found, and the analysis half of
-  the script is now tested on a toy scan. The generation itself has still
-  never been run.
+  feeds the $A_{\mathrm{FB}}$ fit from the ISR-convolved lineshape. This is
+  the test the toy MC cannot provide (the same radiator generates and fits
+  there), and the one remaining logical gap.
+
+  *What has been run.* A first attempt on MadGraph5 3.5.0 (2026-11-05)
+  generated the acceptance sample, so MG5 accepts the beam settings. It gave
+  a peak cross section of $1443 \pm 7$ pb, $0.96$ of what the
+  $\mathcal{O}(\alpha)$ radiator of that day predicted, and then stalled on
+  an unanswered prompt, which the runner now avoids. The 13-point scan has
+  never finished.
+
+  *What the generator's radiation is.* Equations 45-48 of the MadGraph5
+  paper give the `isronlyll` electron PDF: it is the
+  $\mathcal{O}(\alpha^2)$ leading-log structure function of section 0.5, the
+  very function this repo's radiator is tested against, with no
+  non-logarithmic term. Its $\alpha$ is hard-coded in the MG5 source as
+  $0.007562397 = 1/132.23$, where the fit uses $\alpha(0) = 1/137.04$. That
+  makes MG5's $\beta$ $3.6\%$ larger. With `--isr` the fit now uses the
+  same radiator and the same $\alpha$ as the generator.
+
+  *What to expect.* On a noiseless copy of the scan (a test): the matched
+  ISR fit returns the truth exactly, the naive fit lands $+7.1\sigma$ /
+  $+4.1\sigma$ high, and a fit that kept $\alpha(0)$ would sit $9$ and
+  $13$ MeV high, at most a quarter of a $\sigma$ at this luminosity. The
+  generator's
+  $\alpha$ and its $\mathcal{O}(\alpha^2)$ terms lower the predicted peak by
+  $1.5\%$, so they explain part of the $4\%$ deficit seen in the first
+  attempt but not all of it. The rest is open until the scan runs.
 - The "true" reference curve in the closure plot still uses the
   non-relativistic fixed-width `breit_wigner()` shape (pinned to MG5's own
   precise on-peak cross section) as a stand-in for MG5's fully relativistic
@@ -1117,10 +1136,12 @@ Per-script limitations are inside each section above. Project-wide:
   use $\alpha(0)$ and a full-angle formula on events counted inside
   $|\cos\theta| < 0.95$; the second effect is $+0.0003$ on
   $\sin^2\theta_W$.
-- **Not yet run**: the MadGraph5 ISR-on closure test (section 3), which
-  needs an MG5 installation; it is the one piece of evidence still missing
-  for the ISR correction, since the toy MC generates and fits with the same
-  radiator. The numbers of section 3 are from the 2026-09-27 code.
+- **Not yet completed**: the MadGraph5 ISR-on closure test (section 3),
+  which needs an MG5 installation; it is the one piece of evidence still
+  missing for the ISR correction, since the toy MC generates and fits with
+  the same radiator. A first attempt left a $4\%$ difference in the peak
+  cross section of which $1.5\%$ is now understood. The numbers of section 3
+  are from the 2026-09-27 code.
 - **Natural extensions**: a ZFITTER-level radiator; the $ee$ channel with
   its $t$-channel contribution subtracted; a fit of $A_{\mathrm{FB}}$ in
   $v^2$; OPAL's own asymmetry measurements, which the paper tabulates and
