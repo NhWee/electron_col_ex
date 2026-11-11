@@ -43,7 +43,7 @@ done here.
 | 6 | Where does the uncertainty come from? | An [error budget](#error-budget): statistics dominate ($11.6$ / $18.8$ MeV); the per-channel luminosity that Table 1 does not list is the largest systematic ($6.4$ / $12.7$ MeV); truncating the radiator at $\mathcal{O}(\alpha^2)$ costs $3.5$ / $4.6$ MeV |
 | 7 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+18.1\sigma\,/\,+10.4\sigma$ off, the ISR fit $+0.7\sigma\,/\,+0.3\sigma$. Repeated 500 times, the ISR fit's pulls have mean $\approx 0$ and width $\approx 1$ ([pull study](#pull-study)) |
 | 8 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.2289\,^{+0.0043}_{-0.0035}$ from the forward-backward asymmetry (true input 0.23155, $-0.6\sigma$). The asymmetric MINOS errors have the right coverage over 500 toys; the symmetric ones did not |
-| 9 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.5\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work. $A_{\mathrm{FB}}$ gives $\sin^2\theta_W^{\text{on-shell}} = 0.2243 \pm 0.0071$ (truth 0.2222, $+0.3\sigma$) |
+| 9 | Does it still work when the truth model is not my own code? | Yes, both ways. With MadGraph5 events and ISR **off** at the generator the naive fit wins and the ISR fit is $-8.5\sigma$. With ISR **on** the ISR fit recovers the generator's $M_Z$, $\Gamma_Z$ at $+0.8\sigma$ / $-1.2\sigma$ and the naive fit is $+8.2\sigma$ high, as on OPAL data. On MadGraph5's noise-free cross sections the full $\gamma/Z$ model lands within $5$ MeV of the truth |
 | 10 | What happens with all channels at once? | A joint $qq+\mu\mu+\tau\tau$ fit of the full $\gamma/Z$ model gives $M_Z = 91.1908 \pm 0.0035 \pm 0.0040$ and $\Gamma_Z = 2.5065 \pm 0.0058 \pm 0.0050$ GeV ($+0.6\sigma$, $+1.4\sigma$ from PDG), $R_\ell = 20.80 \pm 0.06$ against OPAL's own $20.823 \pm 0.044$, and $\sigma_{\mu\mu}/\sigma_{\tau\tau} = 1.000 \pm 0.006$ ([section 4](#4-extensions)) |
 
 Rows 3 to 6 are the physics result. Rows 7 to 9 are the evidence that row 4
@@ -57,13 +57,13 @@ is not a coincidence. Row 10 is where the fit error meets the systematics.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt   # or requirements.txt without pytest/Jupyter
 
-python -m pytest                        # 59 regression tests, ~10 s
+python -m pytest                        # 60 regression tests, ~15 s
 python src/compute_cross_section.py     # real OPAL data: rows 1-6 above, ~20 s
 python src/simulate_mumu.py             # toy-MC closure test: rows 7-8
 python src/pull_study.py                # 500 repeated toys, ~5 min: rows 7-8
 python src/extended_fits.py             # more points, LEP lineshapes, joint fit: row 10, ~4 min
 python src/simulate_mumu_mg5.py         # generator-level closure: row 9 (needs MadGraph5)
-python src/simulate_mumu_mg5.py --isr   # same, with MG5's ISR on (MG5 >= 3.2, scan not yet completed)
+python src/simulate_mumu_mg5.py --isr   # same, with MG5's ISR on: row 9 (MG5 >= 3.2, ~10 min)
 ```
 
 Or run everything in order, either way:
@@ -855,48 +855,83 @@ needs `gfortran`/`gcc`, deliberately not in `requirements.txt`. Point
 the other two this one shells out to generate events: the 13-point scan plus
 the acceptance sample takes 1-2 minutes.
 
+### With ISR switched on at the generator
+
+`--isr` switches on MadGraph5's ($\geq 3.2.0$) leading-log $e^\pm$ structure
+functions ([Frixione et al.](https://arxiv.org/abs/2108.10261);
+`lpp = -3/+3`, `pdlabel = isronlyll`), fixes their factorization scale to
+$\sqrt{s}$, cuts $\sqrt{s'}/\sqrt{s} > 0.9$ through the $\mu^+\mu^-$
+invariant mass, and evaluates $\cos\theta$ in the post-radiation $e^+e^-$
+rest frame. This is the test the toy MC cannot provide: there the same
+radiator generates and fits.
+
+The generator's radiation is known exactly. Equations 45-48 of the
+MadGraph5 paper give the `isronlyll` PDF as the $\mathcal{O}(\alpha^2)$
+leading-log structure function of section 0.5, with $\alpha = 1/132.23$
+hard-coded in the MG5 source. So with `--isr` the fit uses that radiator
+with that $\alpha$; with $\alpha(0)$ it would sit $9$ MeV high.
+
+<p align="center">
+  <img src="figures/closure_mg5_isr_lineshape.png" width="600"
+       alt="MadGraph5 closure test with ISR on: the ISR-convolved fit follows the generator, the naive fit does not">
+</p>
+
+First complete run, MadGraph5 3.5.0 on 2026-11-11, 13 points at
+$0.3\ \mathrm{pb}^{-1}$ each, under 10 minutes:
+
+| Fit | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | pull vs. param_card truth |
+|---|---|---|---|---|
+| Naive (no ISR) | 35.38/10 | $91.4613 \pm 0.0335$ | $2.7290 \pm 0.0981$ | $\mathbf{+8.2\sigma\,/\,+2.9\sigma}$ |
+| ISR-convolved Breit-Wigner | 25.83/10 | $91.2167 \pm 0.0339$ | $2.3281 \pm 0.0929$ | $\mathbf{+0.85\sigma\,/\,-1.22\sigma}$ |
+| Improved Born $\gamma + Z + $ interference, ISR | 25.95/10 | $91.1918 \pm 0.0339$ | $2.3030 \pm 0.0911$ | $+0.11\sigma\,/\,-1.52\sigma$ |
+
+$A_{\mathrm{FB}}$ then gives
+$\sin^2\theta_W^{\text{on-shell}} = 0.2281\,^{+0.0138}_{-0.0081}$ against the
+truth $0.2222$, $+0.7\sigma$.
+
+This is the mirror of the ISR-off table above, and the result the project
+was missing: on events whose radiation was generated by independent code,
+the ISR correction moves the fit onto the truth, and leaving it out biases
+it high exactly as on OPAL data.
+
+**The $\chi^2$ of 26 is the event sampling, not the model.** The script
+keeps a Poisson number of the generated events at each point. Those draws
+alone give $\sum z^2 = 27.8$ for 13 points, most of it one point at
+$93.19$ GeV that came out $3.4\sigma$ low.
+
+**A finer test needs no new events.** The scan table also stores the cross
+section MadGraph5 integrated at each point, which has no sampling noise.
+Fitted to those (`--refit` prints this):
+
+| Fit model | $\Delta M_Z$ (MeV) | $\Delta\Gamma_Z$ (MeV) |
+|---|---|---|
+| naive Breit-Wigner | $+349$ | $+470$ |
+| ISR-convolved Breit-Wigner | $+36$ | $+27$ |
+| improved Born $\gamma + Z + $ interference, ISR | $+4.6$ | $-5.2$ |
+
+The Breit-Wigner's $+36$ MeV is the size of the convention difference that
+section 4.2 measures on OPAL data ($+31$ MeV between a Breit-Wigner in
+$\sqrt{s}$ and a fixed-width mass, which is what MadGraph5's propagator
+uses), plus its missing photon term. It was hidden here inside a $34$ MeV
+statistical error. The complete model, which is what this README compares
+with PDG, closes on an independent generator to $5$ MeV.
+
+The first attempt (2026-11-05) had found the MG5 peak cross section at
+$0.96$ of the prediction then. The fitted normalization of the improved-Born
+model to MadGraph5's integrated cross sections is $0.973$. MG5's default
+run card requires lepton $p_T > 10$ GeV, which keeps $96.5\%$ of a
+$1 + \cos^2\theta$ distribution at the peak; that is likely most of the
+difference, though it was not checked separately.
+
 ### Known limitations
 
 - Parton-level only: no PDF (correct for a lepton collider), no
-  ISR/beamstrahlung, no shower, no detector simulation. A scope choice, not an
+  ISR/beamstrahlung in the ISR-off run, no shower, no detector simulation. A scope choice, not an
   oversight -- the project's answer to referencing a real collider's
   generate/detector/analysis structure without the full Pythia8/Delphes/FastJet
   chain that hadronic LHC final states need.
-- **ISR-on mode: started once, not yet completed.** `--isr` switches on
-  MadGraph5's ($\geq 3.2.0$) leading-log $e^\pm$ structure functions
-  ([Frixione et al.](https://arxiv.org/abs/2108.10261); `lpp = -3/+3`,
-  `pdlabel = isronlyll`), fixes their factorization scale to $\sqrt{s}$, cuts
-  $\sqrt{s'}/\sqrt{s} > 0.9$ through the $\mu^+\mu^-$ invariant mass,
-  truncates the fit's radiator integral at the matching $x_{\max}$, evaluates
-  $\cos\theta$ in the post-radiation $e^+e^-$ rest frame (boost tested), and
-  feeds the $A_{\mathrm{FB}}$ fit from the ISR-convolved lineshape. This is
-  the test the toy MC cannot provide (the same radiator generates and fits
-  there), and the one remaining logical gap.
+- **ISR-on mode** (`--isr`): see the next subsection.
 
-  *What has been run.* A first attempt on MadGraph5 3.5.0 (2026-11-05)
-  generated the acceptance sample, so MG5 accepts the beam settings. It gave
-  a peak cross section of $1443 \pm 7$ pb, $0.96$ of what the
-  $\mathcal{O}(\alpha)$ radiator of that day predicted, and then stalled on
-  an unanswered prompt, which the runner now avoids. The 13-point scan has
-  never finished.
-
-  *What the generator's radiation is.* Equations 45-48 of the MadGraph5
-  paper give the `isronlyll` electron PDF: it is the
-  $\mathcal{O}(\alpha^2)$ leading-log structure function of section 0.5, the
-  very function this repo's radiator is tested against, with no
-  non-logarithmic term. Its $\alpha$ is hard-coded in the MG5 source as
-  $0.007562397 = 1/132.23$, where the fit uses $\alpha(0) = 1/137.04$. That
-  makes MG5's $\beta$ $3.6\%$ larger. With `--isr` the fit now uses the
-  same radiator and the same $\alpha$ as the generator.
-
-  *What to expect.* On a noiseless copy of the scan (a test): the matched
-  ISR fit returns the truth exactly, the naive fit lands $+7.1\sigma$ /
-  $+4.1\sigma$ high, and a fit that kept $\alpha(0)$ would sit $9$ and
-  $13$ MeV high, at most a quarter of a $\sigma$ at this luminosity. The
-  generator's
-  $\alpha$ and its $\mathcal{O}(\alpha^2)$ terms lower the predicted peak by
-  $1.5\%$, so they explain part of the $4\%$ deficit seen in the first
-  attempt but not all of it. The rest is open until the scan runs.
 - The "true" reference curve in the closure plot still uses the
   non-relativistic fixed-width `breit_wigner()` shape (pinned to MG5's own
   precise on-peak cross section) as a stand-in for MG5's fully relativistic
@@ -1136,12 +1171,11 @@ Per-script limitations are inside each section above. Project-wide:
   use $\alpha(0)$ and a full-angle formula on events counted inside
   $|\cos\theta| < 0.95$; the second effect is $+0.0003$ on
   $\sin^2\theta_W$.
-- **Not yet completed**: the MadGraph5 ISR-on closure test (section 3),
-  which needs an MG5 installation; it is the one piece of evidence still
-  missing for the ISR correction, since the toy MC generates and fits with
-  the same radiator. A first attempt left a $4\%$ difference in the peak
-  cross section of which $1.5\%$ is now understood. The numbers of section 3
-  are from the 2026-09-27 code.
+- **The MadGraph5 closure tests are at $0.3\ \mathrm{pb}^{-1}$ per point**,
+  so their statistical errors ($34$ / $95$ MeV) are three times those of the
+  real data. The noise-free check on MG5's integrated cross sections goes
+  further, to $5$ MeV for the complete model. The ISR-off numbers of
+  section 3 are from the 2026-09-27 code.
 - **Natural extensions**: a ZFITTER-level radiator; the $ee$ channel with
   its $t$-channel contribution subtracted; a fit of $A_{\mathrm{FB}}$ in
   $v^2$; OPAL's own asymmetry measurements, which the paper tabulates and

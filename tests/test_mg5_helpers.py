@@ -162,3 +162,33 @@ def test_isr_on_closure_expectation(restore_isr_settings):
     ccs.ISR_ALPHA = ccs.ALPHA_QED
     mismatched = ccs.fit_breit_wigner_isr(scan)
     assert (mismatched.values["mZ"] - mz) * 1e3 == pytest.approx(8.7, abs=1.0)
+
+
+
+def test_refit_of_the_first_complete_isr_scan(tmp_path, restore_isr_settings):
+    """The first complete --isr scan (MG5 3.5.0, 2026-11-11), as printed by
+    --refit: the matched ISR fit recovers the truth within ~1 sigma, the
+    naive fit is ~8 sigma high, and on MG5's own noise-free cross sections
+    the improved-Born fit lands within a few MeV where the Breit-Wigner is
+    ~+36 MeV off (convention and photon term)."""
+    rows = [
+        (88.1876, 207.6, 0.2287, 0.0282, -0.3333, 0.1161), (88.6876, 274.2, 0.2772, 0.0310, -0.0750, 0.1115),
+        (89.1876, 382.0, 0.3500, 0.0348, -0.0495, 0.0994), (89.6876, 550.2, 0.5475, 0.0436, -0.0506, 0.0795),
+        (90.1876, 818.0, 0.7380, 0.0506, -0.0516, 0.0684), (90.6876, 1179.0, 1.2855, 0.0668, -0.0350, 0.0519),
+        (91.1876, 1454.0, 1.3964, 0.0696, 0.0124, 0.0498), (91.6876, 1360.0, 1.5073, 0.0723, 0.0667, 0.0478),
+        (92.1876, 1073.0, 1.0464, 0.0603, 0.0199, 0.0575), (92.6876, 817.8, 0.9044, 0.0560, 0.1801, 0.0609),
+        (93.1876, 618.9, 0.4678, 0.0403, 0.0963, 0.0857), (93.6876, 485.4, 0.4851, 0.0410, 0.2429, 0.0820),
+        (94.1876, 399.9, 0.4158, 0.0380, 0.2500, 0.0884),
+    ]
+    scan = pd.DataFrame(rows, columns=["sqrt_s_GeV", "sigma_mg5_true_pb", "sigma_computed_nb", "sigma_computed_err_nb",
+                                       "afb_measured", "afb_err"])
+    truth = {"mZ": 91.1880, "gammaZ": 2.4414, "sin2w_onshell": 1 - (80.419 / 91.188) ** 2}
+    mg5.configure_fit_for_mg5_isr()
+    out = mg5.analyse_scan(scan, truth, isr_on=True, out_dir=tmp_path)
+    assert out["pull_mZ_isr"] == pytest.approx(0.84, abs=0.05)
+    assert out["pull_gammaZ_isr"] == pytest.approx(-1.22, abs=0.05)
+    assert out["pull_mZ_naive"] == pytest.approx(8.16, abs=0.05)
+    assert out["pull_sin2w"] == pytest.approx(0.73, abs=0.05)
+    assert abs(out["pull_mZ_iba"]) < 1.5
+    assert out["shape_mZ_isr_MeV"] == pytest.approx(36, abs=3)
+    assert abs(out["shape_mZ_iba_MeV"]) < 8

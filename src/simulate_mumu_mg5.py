@@ -51,14 +51,11 @@ MG5's `isronlyll` PDF is the O(alpha^2) leading-log structure function with
 alpha = 1/132.23 hard-coded, so the fit uses the leading-log radiator "o2ll"
 with the same alpha in beta.
 
-The full --isr scan has not been completed yet. A first attempt on MG5
-3.5.0 (2026-11-05) got through the acceptance sample, which shows that MG5
-accepts lpp = -3/+3, pdlabel = isronlyll and mmll, and then stalled on an
-unanswered prompt, which _run_mg5 now avoids. The remaining settings
-(fixed_fac_scale, dsqrt_q2fact1/2) were checked on 2026-11-08 against the
-run_card definitions in MadGraph5 v3.5.17's madgraph/various/banner.py,
-without running MG5. MG5 refuses unknown names, so a mismatch in another
-version fails loudly.
+The first complete --isr scan ran on MG5 3.5.0 on 2026-11-11 in under ten
+minutes (README section 3). An earlier attempt had stalled on an unanswered
+prompt, which _run_mg5 now avoids. The scale settings (fixed_fac_scale,
+dsqrt_q2fact1/2) were checked against the run_card definitions in
+MadGraph5 v3.5.17's madgraph/various/banner.py.
 
 --refit re-analyses the scan table an earlier run saved
 (data/processed/simulated_mumu_mg5[_isr]_scan.csv) with the current fit
@@ -472,6 +469,41 @@ def analyse_scan(scan: pd.DataFrame, truth: dict, isr_on: bool, out_dir: Path = 
         true_label=true_label,
     )
 
+    # MG5's matrix element has photon exchange and gamma/Z interference, and
+    # its propagator has a fixed width, so the improved-Born model of
+    # electroweak.py is the like-for-like fit: its M_Z and Gamma_Z compare
+    # with the param_card directly, without a convention shift.
+    born_model = ccs.improved_born_isr("mumu") if isr_on else ccs.improved_born("mumu")
+    print("\n=== Improved-Born fit (photon + Z + interference, fixed width as in MG5) ===")
+    cov = np.diag(scan["sigma_computed_err_nb"].to_numpy() ** 2)
+    fit_iba = ccs.fit_with_covariance(scan, born_model, cov, sigma_peak=1.0)
+    pull_mZ_iba = (fit_iba.values["mZ"] - truth["mZ"]) / fit_iba.errors["mZ"]
+    pull_gammaZ_iba = (fit_iba.values["gammaZ"] - truth["gammaZ"]) / fit_iba.errors["gammaZ"]
+    print(f"chi2/ndof = {fit_iba.fval:.2f}/{len(scan) - 3}")
+    print(f"  mZ = {fit_iba.values['mZ']:.4f} +/- {fit_iba.errors['mZ']:.4f} GeV, gammaZ = {fit_iba.values['gammaZ']:.4f} "
+          f"+/- {fit_iba.errors['gammaZ']:.4f} GeV, norm = {fit_iba.values['sigma_peak']:.4f}")
+    print(f"  pull vs. MG5 param_card truth: mZ {pull_mZ_iba:+.2f} sigma, gammaZ {pull_gammaZ_iba:+.2f} sigma")
+
+    # The same fits on MG5's own integrated cross sections, which carry no
+    # Poisson noise from the event subsampling (only MG5's ~0.3% integration
+    # error, not saved). Equal relative weights; only the shifts mean anything.
+    print("\n=== Noise-free shape check: the fits on MG5's integrated cross sections ===")
+    exact = scan.assign(sigma_computed_nb=scan["sigma_mg5_true_pb"] / 1000,
+                        sigma_computed_err_nb=scan["sigma_mg5_true_pb"] / 1000 * 0.01)
+    exact_cov = np.diag(exact["sigma_computed_err_nb"].to_numpy() ** 2)
+    shape_shifts = {}
+    for label, fit in [
+        ("naive Breit-Wigner", fit_breit_wigner(exact)),
+        ("ISR-convolved Breit-Wigner", fit_breit_wigner_isr(exact)),
+        ("improved Born", ccs.fit_with_covariance(exact, born_model, exact_cov, sigma_peak=1.0)),
+    ]:
+        d_m = (fit.values["mZ"] - truth["mZ"]) * 1e3
+        d_g = (fit.values["gammaZ"] - truth["gammaZ"]) * 1e3
+        shape_shifts[label] = (d_m, d_g)
+        print(f"  {label:28s} mZ {d_m:+7.1f} MeV, gammaZ {d_g:+7.1f} MeV from the param_card truth")
+    print("  A Breit-Wigner in sqrt(s) and MG5's fixed-width propagator define M_Z differently\n"
+          "  (README section 0.2), and the Breit-Wigner has no photon term (section 0.3).")
+
     which = "ISR-convolved" if isr_on else "NAIVE"
     print(f"\n=== A_FB(s) fit (mZ, gammaZ fixed from the {which} lineshape fit -- see note above) ===")
     fit_afb_result = fit_afb(scan, lineshape_for_afb.values["mZ"], lineshape_for_afb.values["gammaZ"])
@@ -500,6 +532,9 @@ def analyse_scan(scan: pd.DataFrame, truth: dict, isr_on: bool, out_dir: Path = 
     return {
         "pull_mZ_naive": pull_mZ_plain, "pull_gammaZ_naive": pull_gammaZ_plain,
         "pull_mZ_isr": pull_mZ, "pull_gammaZ_isr": pull_gammaZ,
+        "pull_mZ_iba": pull_mZ_iba, "pull_gammaZ_iba": pull_gammaZ_iba,
+        "shape_mZ_isr_MeV": shape_shifts["ISR-convolved Breit-Wigner"][0],
+        "shape_mZ_iba_MeV": shape_shifts["improved Born"][0],
         "sin2w": fitted_sin2, "pull_sin2w": pull_sin2,
     }
 

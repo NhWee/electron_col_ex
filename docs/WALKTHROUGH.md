@@ -76,14 +76,14 @@ error_budget()                        → 오차가 어디서 오는지, 그리�
 python -m pytest
 ```
 
-**무엇을 하나.** 코드가 바뀌어도 물리가 깨지지 않았는지 59가지를 확인한다.
+**무엇을 하나.** 코드가 바뀌어도 물리가 깨지지 않았는지 60가지를 확인한다.
 예를 들어 ISR 복사 함수의 leading-log 부분이 정확히 1로 적분되는지, 그것이
 전자 하나짜리 구조함수 두 개를 합성곱한 것과 같은지, 전방-후방 비대칭이 피크
 아래에서 음수·위에서 양수인지, 노이즈 없는 데이터에서 피팅이 입력값을 그대로
 돌려주는지, 손으로 옮긴 데이터가 OPAL 발표값과 2% 이내로 맞는지, 보정계수 표의
 합계 행이 그 구성 행들과 맞는지.
 
-**무엇이 나오나.** `59 passed in 10s` 정도. `pytest.ini`가 조용한 출력을 쓰므로
+**무엇이 나오나.** `60 passed in 15s` 정도. `pytest.ini`가 조용한 출력을 쓰므로
 점만 한 줄 찍힌다. 실패가 있으면 그 테스트 이름이 무엇이 깨졌는지 알려 준다.
 
 **왜 먼저 하나.** 이후 단계의 숫자를 믿기 전에 환경(패키지 버전 등)이
@@ -336,12 +336,12 @@ PDG보다 2~3σ 높게 나오는 것은 대부분 광자 교환을 빼먹어서�
 
 ---
 
-## 단계 5, 6. MadGraph5 (선택, 각 1~2분)
+## 단계 5, 6. MadGraph5 (선택, ISR 끔 1~2분, ISR 켬 약 10분)
 
 ```bash
 export MG5_PATH=/path/to/MG5_aMC_v3_5_0/bin/mg5_aMC
 python src/simulate_mumu_mg5.py          # ISR 끔
-python src/simulate_mumu_mg5.py --isr    # ISR 켬 (MG5 3.2 이상, scan은 아직 완료된 적 없음)
+python src/simulate_mumu_mg5.py --isr    # ISR 켬 (MG5 3.2 이상, 약 10분)
 python src/simulate_mumu_mg5.py --refit  # 사건 생성 없이, 저장된 scan을 지금 코드로 다시 피팅
 ```
 
@@ -357,27 +357,30 @@ MG5를 13번 호출해 각 에너지에서 사건을 만들고, 나온 μ⁻의 
 이 역전은 MG5 없이도 테스트 하나(`test_isr_fit_of_radiation_free_data_is_biased_low`)가
 확인한다.
 
-**ISR 켬(6단계)에서 기대하는 것.** 이번엔 실제 데이터처럼 ISR 피팅이 정답을
-복원하고 ISR 없는 피팅이 위로 치우쳐야 한다. 노이즈 없는 복제본으로 계산한
-기대값은 ISR 없는 피팅 +7.1σ / +4.1σ, ISR 피팅 0σ다(테스트
-`test_isr_on_closure_expectation`).
+**ISR 켬(6단계)에서 볼 것.** 이번엔 실제 데이터처럼 ISR 피팅이 정답을 복원하고
+ISR 없는 피팅이 위로 치우쳐야 한다. 2026-11-11의 첫 완주(MG5 3.5.0, 10분 이내)
+결과:
 
-13점 scan은 **아직 끝까지 실행된 적이 없다**. 2026-11-05의 첫 시도(MG5 3.5.0)는
-acceptance 표본까지 만들었고(피크 단면적 1443 ± 7 pb, 당시 radiator 예측의
-0.96배), 그 뒤 MG5가 보이지 않는 프롬프트에서 멈췄다. 지금은 실행기가 stdin을
-닫고 출력을 `data/processed/mg5_logs/`에 남긴다.
+```
+=== Naive Breit-Wigner fit to MG5-generated points ===
+  pull vs. MG5 param_card truth: mZ +8.16 sigma, gammaZ +2.93 sigma
+=== ISR-convolved Breit-Wigner fit to MG5-generated points (leading-log only, to O(alpha^2) radiator) ===
+chi2/ndof = 25.83/10   (Migrad valid: True)
+  pull vs. MG5 param_card truth: mZ +0.85 sigma, gammaZ -1.22 sigma
+=== Noise-free shape check: the fits on MG5's integrated cross sections ===
+  naive Breit-Wigner           mZ  +349.3 MeV, gammaZ  +469.5 MeV from the param_card truth
+  ISR-convolved Breit-Wigner   mZ   +36.0 MeV, gammaZ   +27.4 MeV from the param_card truth
+  improved Born                mZ    +4.6 MeV, gammaZ    -5.2 MeV from the param_card truth
+```
+ISR 피팅이 독립된 생성기의 정답을 1σ 근처로 복원했다. χ² 26은 모형 문제가 아니라
+스크립트가 점마다 사건 수를 Poisson으로 뽑을 때의 흔들림이다(93.19 GeV 점 하나가
+−3.4σ). "Noise-free" 블록은 MG5가 직접 적분한 단면적으로 같은 피팅을 한 것이라
+통계 잡음이 없다. 여기서 Breit-Wigner는 36 MeV 어긋나고 광자+Z+간섭 모형은
+5 MeV 이내로 맞는다. Breit-Wigner의 36 MeV는 질량 정의 차이(README 4.2절에서
+실데이터로 잰 31 MeV)와 빠진 광자 항이다.
 
-그 뒤 확인한 것 두 가지가 코드에 들어가 있다.
-- MG5의 `isronlyll` 전자 PDF는 README 0.5절의 O(α²) leading-log 구조함수이고
-  (MG5 논문 식 45-48), α가 소스에 1/132.23으로 고정되어 있다. 피팅은 α(0) =
-  1/137.04를 쓰므로 β가 3.6% 다르다. `--isr`에서는 피팅이 생성기와 같은
-  radiator, 같은 α를 쓰도록 맞췄다. 맞추지 않으면 M_Z가 9 MeV 높게 나온다.
-- factorization scale을 √s로 고정했다(MG5 기본값은 동적 scale).
-
-이 두 가지로 첫 시도의 4% 차이 중 1.5%가 설명된다. 나머지는 scan을 돌려 봐야
-안다. MG5가 run_card 파라미터 이름을 모르겠다고 하면 MG5 버전이 3.2 미만이거나
-이름이 바뀐 것이다. 처음 끝까지 돌리는 사람이 결과를 README 3절에 추가해 주면
-된다.
+피팅은 `--isr`일 때 MG5의 전자 PDF와 같은 radiator, 같은 α(1/132.23)를 쓴다.
+α(0)을 쓰면 M_Z가 9 MeV 높게 나온다.
 
 **README 3절 숫자 갱신.** 3절의 표는 2026-09-27 실행 결과다. 그때 저장된
 `data/processed/simulated_mumu_mg5_scan.csv`가 남아 있으면 `--refit`으로 지금의

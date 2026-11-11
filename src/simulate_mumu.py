@@ -400,7 +400,7 @@ def plot_closure(
         ax.spines[spine].set_color(MUTED)
     ax.tick_params(colors=MUTED)
 
-    legend = ax.legend(frameon=False, loc="upper right", fontsize=9)
+    legend = ax.legend(frameon=False, loc="upper left", fontsize=9)
     for text in legend.get_texts():
         text.set_color(INK)
 
