@@ -192,3 +192,30 @@ def test_refit_of_the_first_complete_isr_scan(tmp_path, restore_isr_settings):
     assert abs(out["pull_mZ_iba"]) < 1.5
     assert out["shape_mZ_isr_MeV"] == pytest.approx(36, abs=3)
     assert abs(out["shape_mZ_iba_MeV"]) < 8
+
+
+
+def test_refit_of_the_isr_off_scan():
+    """The ISR-off scan of 2026-11-11: the naive fit is right, the ISR fit
+    over-corrects by ~-8.6 sigma, and on the noise-free cross sections the
+    improved-Born model is within a few MeV."""
+    rows = [
+        (88.1876, 284.5, 0.3010, 0.0323, -0.2184, 0.1046), (88.6876, 383.5, 0.3806, 0.0363, -0.4182, 0.0866),
+        (89.1876, 539.6, 0.5121, 0.0421, -0.2432, 0.0797), (89.6876, 793.1, 0.7958, 0.0525, -0.1478, 0.0652),
+        (90.1876, 1194.0, 1.3598, 0.0687, -0.0992, 0.0502), (90.6876, 1714.0, 1.8062, 0.0792, -0.0958, 0.0436),
+        (91.1876, 2022.0, 2.0484, 0.0843, 0.0000, 0.0411), (91.6876, 1749.0, 1.6920, 0.0766, 0.1370, 0.0448),
+        (92.1876, 1240.0, 1.2733, 0.0664, 0.1033, 0.0518), (92.6876, 834.0, 0.8477, 0.0542, 0.1592, 0.0631),
+        (93.1876, 574.6, 0.5882, 0.0451, 0.2471, 0.0743), (93.6876, 412.0, 0.4290, 0.0385, 0.2097, 0.0878),
+        (94.1876, 308.7, 0.3252, 0.0336, 0.3191, 0.0977),
+    ]
+    scan = pd.DataFrame(rows, columns=["sqrt_s_GeV", "sigma_mg5_true_pb", "sigma_computed_nb", "sigma_computed_err_nb",
+                                       "afb_measured", "afb_err"])
+    truth = {"mZ": 91.1880, "gammaZ": 2.4414, "sin2w_onshell": 1 - (80.419 / 91.188) ** 2}
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as tmp:
+        out = mg5.analyse_scan(scan, truth, isr_on=False, out_dir=Path(tmp))
+    assert out["pull_mZ_naive"] == pytest.approx(0.14, abs=0.05)
+    assert out["pull_mZ_isr"] == pytest.approx(-8.58, abs=0.05)
+    assert out["pull_gammaZ_isr"] == pytest.approx(-5.46, abs=0.05)
+    assert abs(out["shape_mZ_iba_MeV"]) < 6

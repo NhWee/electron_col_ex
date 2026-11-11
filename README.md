@@ -43,7 +43,7 @@ done here.
 | 6 | Where does the uncertainty come from? | An [error budget](#error-budget): statistics dominate ($11.6$ / $18.8$ MeV); the per-channel luminosity that Table 1 does not list is the largest systematic ($6.4$ / $12.7$ MeV); truncating the radiator at $\mathcal{O}(\alpha^2)$ costs $3.5$ / $4.6$ MeV |
 | 7 | Is that ISR machinery correct, or just tuned to land on PDG? | Toy-MC closure test against a *known* truth: the no-ISR fit lands $+18.1\sigma\,/\,+10.4\sigma$ off, the ISR fit $+0.7\sigma\,/\,+0.3\sigma$. Repeated 500 times, the ISR fit's pulls have mean $\approx 0$ and width $\approx 1$ ([pull study](#pull-study)) |
 | 8 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.2289\,^{+0.0043}_{-0.0035}$ from the forward-backward asymmetry (true input 0.23155, $-0.6\sigma$). The asymmetric MINOS errors have the right coverage over 500 toys; the symmetric ones did not |
-| 9 | Does it still work when the truth model is not my own code? | Yes, both ways. With MadGraph5 events and ISR **off** at the generator the naive fit wins and the ISR fit is $-8.5\sigma$. With ISR **on** the ISR fit recovers the generator's $M_Z$, $\Gamma_Z$ at $+0.8\sigma$ / $-1.2\sigma$ and the naive fit is $+8.2\sigma$ high, as on OPAL data. On MadGraph5's noise-free cross sections the full $\gamma/Z$ model lands within $5$ MeV of the truth |
+| 9 | Does it still work when the truth model is not my own code? | Yes, both ways. With MadGraph5 events and ISR **off** at the generator the naive fit wins ($+0.1\sigma$) and the ISR fit is $-8.6\sigma$. With ISR **on** the ISR fit recovers the generator's $M_Z$, $\Gamma_Z$ at $+0.8\sigma$ / $-1.2\sigma$ and the naive fit is $+8.2\sigma$ high, as on OPAL data. On MadGraph5's noise-free cross sections the full $\gamma/Z$ model lands within $5$ MeV of the truth |
 | 10 | What happens with all channels at once? | A joint $qq+\mu\mu+\tau\tau$ fit of the full $\gamma/Z$ model gives $M_Z = 91.1908 \pm 0.0035 \pm 0.0040$ and $\Gamma_Z = 2.5065 \pm 0.0058 \pm 0.0050$ GeV ($+0.6\sigma$, $+1.4\sigma$ from PDG), $R_\ell = 20.80 \pm 0.06$ against OPAL's own $20.823 \pm 0.044$, and $\sigma_{\mu\mu}/\sigma_{\tau\tau} = 1.000 \pm 0.006$ ([section 4](#4-extensions)) |
 
 Rows 3 to 6 are the physics result. Rows 7 to 9 are the evidence that row 4
@@ -57,7 +57,7 @@ is not a coincidence. Row 10 is where the fit error meets the systematics.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt   # or requirements.txt without pytest/Jupyter
 
-python -m pytest                        # 60 regression tests, ~15 s
+python -m pytest                        # 61 regression tests, ~15 s
 python src/compute_cross_section.py     # real OPAL data: rows 1-6 above, ~20 s
 python src/simulate_mumu.py             # toy-MC closure test: rows 7-8
 python src/pull_study.py                # 500 repeated toys, ~5 min: rows 7-8
@@ -781,7 +781,7 @@ count to
 $n_{\mathrm{keep}} = \mathrm{Poisson}(0.3\,\mathrm{pb}^{-1} \times \sigma_{\mathrm{MG5}})$,
 which is where Poisson luminosity statistics enter on top of MG5's otherwise
 deterministic event count. Acceptance is measured as in section 2, from a
-dedicated 8,000-event MG5 sample at the pole: $\hat{A} = 0.9595 \pm 0.0022$.
+dedicated 8,000-event MG5 sample at the pole: $\hat{A} = 0.9634 \pm 0.0021$.
 This is higher than section 2's 0.9271 because MG5's default `run_card.dat`
 already requires lepton $p_T > 10$ GeV, i.e. $|\cos\theta| < 0.976$ at the
 pole. $\hat{A}$ here is relative to that fiducial region, and so is
@@ -789,35 +789,41 @@ $\sigma_{\mathrm{MG5}}$, so the closure is consistent.
 
 ### Result: the fits swap places, and that is correct
 
+Run of 2026-11-11 (MadGraph5 3.5.0, current code):
+
 | Fit | $\chi^2/\mathrm{ndof}$ | $M_Z$ (GeV) | $\Gamma_Z$ (GeV) | pull vs. param_card truth |
 |---|---|---|---|---|
-| Naive (no ISR) | 14.27/10 | $91.1979 \pm 0.0271$ | $2.4685 \pm 0.0719$ | $\mathbf{+0.37\sigma\,/\,+0.38\sigma}$ |
-| ISR-convolved | 26.27/10 | $90.9535 \pm 0.0277$ | $2.0571 \pm 0.0673$ | $\mathbf{-8.46\sigma\,/\,-5.71\sigma}$ |
+| Naive (no ISR) | 8.23/10 | $91.1919 \pm 0.0271$ | $2.4836 \pm 0.0729$ | $\mathbf{+0.14\sigma\,/\,+0.58\sigma}$ |
+| ISR-convolved | 17.97/10 | $90.9524 \pm 0.0274$ | $2.0671 \pm 0.0686$ | $\mathbf{-8.58\sigma\,/\,-5.46\sigma}$ |
+| Improved Born $\gamma + Z + $ interference, no ISR | 6.86/10 | $91.1624 \pm 0.0271$ | $2.4500 \pm 0.0711$ | $-0.95\sigma\,/\,+0.12\sigma$ |
 
 The naive fit beating the ISR fit is the opposite of every other fit here, and
-it is right. This MG5 process has ISR/beamstrahlung off by default (a scope
-choice, below), so the true generating lineshape really *is* ISR-free, and
-convolving in a radiator that is not there over-corrects the peak downward --
-the mirror image of the real OPAL data, which does have ISR and where the naive
-fit was the biased one. That symmetry is the value of this script: the ISR
-machinery moves the answer in the physically correct direction *in both
-directions*, rather than always nudging toward the expected number.
+it is right. This MG5 process has ISR/beamstrahlung off by default, so the
+true generating lineshape really *is* ISR-free, and convolving in a radiator
+that is not there over-corrects the peak downward -- the mirror image of the
+real OPAL data, which does have ISR and where the naive fit was the biased
+one. Together with the ISR-on run below, the ISR machinery moves the answer
+in the physically correct direction *in both directions*, rather than always
+nudging toward the expected number.
 
 The $A_{\mathrm{FB}}$ fit therefore fixes $M_Z$/$\Gamma_Z$ from the **naive**
 fit here, unlike section 2 where the ISR-convolved fit was the correct choice
-for OPAL's ISR-affected data. In `data/processed/simulated_mumu_mg5_closure.png`
-the naive fit and the true curve sit on top of each other while the ISR curve
-visibly diverges.
+for OPAL's ISR-affected data. It returns
 
-With $M_Z$ and $\Gamma_Z$ fixed from the naive fit, the $A_{\mathrm{FB}}$ fit
-returns
+$$\sin^2\theta_W^{\text{on-shell}} = 0.2431\,^{+0.0269}_{-0.0131}$$
 
-$$\sin^2\theta_W^{\text{on-shell}} = 0.22430 \pm 0.00712$$
+against the truth 0.22225: $+1.6\sigma$ with the lower MINOS error, which
+faces the truth ($+0.8\sigma$ with the symmetric Hesse error),
+$\chi^2/\mathrm{ndof} = 13.95/12$. This sample fluctuated toward
+$\sin^2\theta_W = 0.25$, where section 2 shows the interval becomes lopsided.
+The measured asymmetry is negative below the pole and positive above it, as
+MG5's matrix elements require.
 
-against the truth 0.22225: a $+0.29\sigma$ pull, $\chi^2/\mathrm{ndof} = 17.11/12$.
-The measured asymmetry is negative below the pole and positive above it
-(`data/processed/simulated_mumu_mg5_afb.png`), as MG5's matrix elements
-require.
+On MadGraph5's own integrated cross sections, without sampling noise, the
+naive Breit-Wigner sits $+38$ / $+40$ MeV from the truth and the improved-Born
+model $+3.3$ / $-2.2$ MeV. The ISR-on run below finds the same pattern, so the
+Breit-Wigner's offset does not come from the radiation treatment: it is the
+mass convention and the photon term.
 
 **Correction (2026-09-27).** An earlier version quoted
 $\sin^2\theta_W^{\text{on-shell}} = 0.25000 \pm 0.01874$ here as a
@@ -826,26 +832,10 @@ charge squared in the $\gamma/Z$ interference terms, which flipped
 $A_{\mathrm{FB}}$, and this script measured $\theta$ from the $e^+$ beam, which
 flipped it back in $F_2$. The mismatch left in $F_1$ can only be absorbed by
 driving $v^2 \to 0$, i.e. $\sin^2\theta_W \to 0.25$: a noiseless Asimov
-sample with this script's settings lands on exactly 0.25000 from any starting
-value. Both are fixed, and the same Asimov sample now returns
-$0.2223 \pm 0.0067$ against the truth 0.22225. All numbers in this section
-are from the re-run on 2026-09-27 with the fixed code (MadGraph5 v3.5.0).
-The lineshape fits do not depend on the fix, since the acceptance cut is
-symmetric in $\cos\theta$; they moved within their errors only because the
-re-run generated a new event sample.
-
-**Which code these numbers are from.** That run predates the radiator
-changes of section 0.5 and the MINOS errors of section 2. Its naive row and
-its $A_{\mathrm{FB}}$ result do not depend on the radiator. Its ISR-convolved
-row used the simplified radiator. A noiseless copy of the setup (no ISR, the
-param_card truth, the same scan and luminosity) puts that row at
-$-8.4\sigma\,/\,-5.7\sigma$ with the simplified radiator and at
-$-8.3\sigma\,/\,-5.6\sigma$ with today's, $3$ and $6$ MeV apart, so the
-inversion stands. A test now pins the second pair, which makes the central
-claim of this section checkable without MadGraph5.
-`python src/simulate_mumu_mg5.py --refit` re-analyses the scan the last run
-saved with the current code and prints the MINOS errors, without generating
-events.
+sample with those settings lands on exactly 0.25000 from any starting value.
+Both are fixed, and the same Asimov sample now returns $0.2223 \pm 0.0067$.
+The present $0.2431$ is a different thing: an Asimov sample still returns the
+truth, and this one is a statistical fluctuation within $1.6\sigma$.
 
 ### Running it
 
@@ -853,7 +843,9 @@ Needs a MadGraph5_aMC@NLO installation -- external to this repo, multi-GB,
 needs `gfortran`/`gcc`, deliberately not in `requirements.txt`. Point
 `MG5_PATH` at your `bin/mg5_aMC` if it is not at the script's default. Unlike
 the other two this one shells out to generate events: the 13-point scan plus
-the acceptance sample takes 1-2 minutes.
+the acceptance sample takes a few minutes with ISR off and under 10 minutes
+with ISR on. `--refit` re-analyses the saved scan without generating
+events.
 
 ### With ISR switched on at the generator
 
@@ -1174,8 +1166,7 @@ Per-script limitations are inside each section above. Project-wide:
 - **The MadGraph5 closure tests are at $0.3\ \mathrm{pb}^{-1}$ per point**,
   so their statistical errors ($34$ / $95$ MeV) are three times those of the
   real data. The noise-free check on MG5's integrated cross sections goes
-  further, to $5$ MeV for the complete model. The ISR-off numbers of
-  section 3 are from the 2026-09-27 code.
+  further, to $5$ MeV for the complete model.
 - **Natural extensions**: a ZFITTER-level radiator; the $ee$ channel with
   its $t$-channel contribution subtracted; a fit of $A_{\mathrm{FB}}$ in
   $v^2$; OPAL's own asymmetry measurements, which the paper tabulates and
