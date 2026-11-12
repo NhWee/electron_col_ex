@@ -3,7 +3,7 @@
 # before each step saying what it does. Safe to re-run; everything it writes
 # goes to data/processed/ (gitignored).
 #
-#   ./run_all.sh              # tests + all MG5-free steps (~10 min, mostly the pull study)
+#   ./run_all.sh              # tests + all MG5-free steps (~10 min: pull study 5, extensions 4)
 #   N_TOYS=50 ./run_all.sh    # quicker pull study
 #   MG5_PATH=/path/to/bin/mg5_aMC ./run_all.sh   # also runs the MadGraph5 closure tests
 #
@@ -30,7 +30,8 @@ python -m pytest
 banner 1 "Real OPAL data  (src/compute_cross_section.py)" \
 "Computes sigma = f N / L for 7 energy points, checks them against OPAL's
  published values, fits M_Z and Gamma_Z with and without ISR, and prints the
- error budget. The ISR-convolved fit is the headline result."
+ error budget with the complete-model result (photon exchange included, LEP
+ running-width convention) at its end."
 python src/compute_cross_section.py
 
 banner 2 "Toy Monte Carlo closure test  (src/simulate_mumu.py)" \
@@ -46,8 +47,9 @@ python src/pull_study.py --n-toys "$N_TOYS"
 
 banner 4 "Extensions  (src/extended_fits.py)" \
 "Adds six near-peak points with borrowed correction factors, compares three
- lineshape models (propagator conventions), and fits qq, mumu and tautau
- jointly with a common M_Z and Gamma_Z."
+ lineshape models (propagator conventions, photon exchange), and fits qq,
+ mumu and tautau jointly with a common M_Z and Gamma_Z, with a Breit-Wigner
+ and with the full photon + Z + interference cross section."
 python src/extended_fits.py
 
 if [ -n "${MG5_PATH:-}" ]; then
@@ -67,3 +69,4 @@ else
 fi
 
 printf '\nDone. Tables and plots are in data/processed/. Compare the numbers with README.md.\n'
+printf 'make figures copies the plots README.md embeds into figures/.\n'

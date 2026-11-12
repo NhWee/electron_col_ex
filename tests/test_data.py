@@ -41,3 +41,40 @@ def test_mumu_errors_are_positive_and_small(seven_points):
     comp = ccs.compute_channel(seven_points, "mumu")
     rel = comp["sigma_computed_err_nb"] / comp["sigma_computed_nb"]
     assert (rel > 0).all() and (rel < 0.03).all()
+
+
+def test_energies_are_the_channels_own_published_means(seven_points):
+    """sqrt_s_GeV comes from the channel's own Table 8-11 mean (0.1 MeV
+    precision); Table 1's value is that number rounded to 10 MeV."""
+    for channel in ("qq", "mumu"):
+        comp = ccs.compute_channel(seven_points, channel)
+        published = pd.read_csv(ccs.DATA_RAW / ccs.CHANNELS[channel]["published_file"])
+        merged = comp.merge(published, on=["year", "sample"])
+        assert (merged["sqrt_s_GeV"] == merged["sqrt_s_mean_GeV"]).all()
+        assert ((merged["sqrt_s_GeV"] - merged["sqrt_s_table1_GeV"]).abs() <= 0.005 + 1e-9).all()
+
+
+def test_computed_over_measured_is_the_luminosity_ratio(seven_points):
+    """N and f are shared, so computed / measured = L_channel / L_qq. For qq
+    itself that leaves only Table 1's 0.1 pb^-1 rounding of L (<= 0.6% here);
+    for mu+mu- at the 1993 peak it implies L_mumu = 8.15 pb^-1 against
+    Table 1's L_qq = 8.8 pb^-1."""
+    qq = ccs.compute_channel(seven_points, "qq")
+    assert (qq["diff_pct"].abs() < 100 * 0.05 / qq["L_pbinv"]).all()
+    mumu = ccs.compute_channel(seven_points, "mumu")
+    row = mumu[(mumu["year"] == 1993) & (mumu["sample"] == "peak")]
+    assert ccs.implied_channel_luminosity(row).iloc[0] == pytest.approx(8.15, abs=0.01)
+
+
+@pytest.mark.parametrize("channel", list(ccs.CHANNELS))
+def test_correction_factor_tables_are_internally_consistent(channel):
+    """Each table lists a signal and a background correction and their
+    total. The total f must be their product and its error their quadrature
+    sum, to the precision the paper prints (its own tau+tau- totals are off
+    the product by up to 3.4e-4). This is the check that exposes a mistyped
+    total: the 1994 mu+mu- error read 0.14 instead of 0.10 until 2026-11."""
+    t = pd.read_csv(ccs.DATA_RAW / ccs.CHANNELS[channel]["corrections_file"])
+    product = t["signal_correction_f"] * t["background_correction_f"]
+    assert (product - t["total_correction_f"]).abs().max() < 5e-4
+    quadrature = (t["signal_df_over_f_pct"] ** 2 + t["background_df_over_f_pct"] ** 2) ** 0.5
+    assert (quadrature - t["total_df_over_f_pct"]).abs().max() < 0.015

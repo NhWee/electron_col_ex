@@ -7,7 +7,7 @@ data/raw/*
 data/processed/
 
 # figures/ is tracked on purpose: the README embeds it.
-# Regenerate with the scripts, then copy the ones the README references.
+# Regenerate with `make figures` (see Makefile).
 .claude/
 py.py
 parser.out

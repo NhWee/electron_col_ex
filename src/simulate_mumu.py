@@ -46,6 +46,7 @@ from compute_cross_section import (
     fit_breit_wigner_isr,
     print_fit_result,
 )
+from electroweak import G_FERMI_GEV2, GEV2_TO_NB, SIN2_THETAW_EFF, f1_f2
 
 YELLOW = "#eda100"
 
@@ -62,7 +63,6 @@ TRUE_GAMMAZ_GEV = PDG_GAMMAZ_GEV
 # sigma_peak = (12*pi/M_Z^2) * Gamma_ee*Gamma_mumu / Gamma_Z^2, using PDG's
 # leptonic partial width (~84 MeV, lepton universality) -- not an arbitrary
 # number, and it should land close to the ~2.0 nb LEP actually measured.
-GEV2_TO_NB = 389379.0  # (hbar*c)^2, CODATA, converted from mb to nb
 PDG_GAMMA_LL_GEV = 0.08399
 TRUE_SIGMA_PEAK_NB = (
     12 * np.pi / TRUE_MZ_GEV**2 * PDG_GAMMA_LL_GEV**2 / TRUE_GAMMAZ_GEV**2 * GEV2_TO_NB
@@ -70,42 +70,25 @@ TRUE_SIGMA_PEAK_NB = (
 
 # --- Angular distribution / gamma-Z interference -------------------------
 # Standard "improved Born approximation" (IBA) formula (e.g. Renton,
-# Electroweak Interactions): dsigma/dOmega ~ (1+cos^2 theta)*F1(s) +
-# cos(theta)*F2(s), with F1, F2 built from the photon/Z propagator ratio
-# chi(s) and standard lepton vector/axial couplings. theta is the angle between
-# the outgoing mu- and the incoming e- (standard convention: A_FB < 0 below the
-# Z pole, > 0 above). A_FB(s) = (3/8)*F2/F1
-# is the standard result of integrating forward vs. backward hemispheres.
-# This captures the real gamma/Z interference (sign flip below/above the
-# peak) that the constant-A_FB approximation could not -- but note it is a
-# *different* level of approximation than the non-relativistic fixed-width
+# Electroweak Interactions), implemented in electroweak.py:
+# dsigma/dOmega ~ (1+cos^2 theta)*F1(s) + cos(theta)*F2(s), with F1, F2 built
+# from the photon/Z propagator ratio chi(s) and standard lepton vector/axial
+# couplings. theta is the angle between the outgoing mu- and the incoming e-
+# (standard convention: A_FB < 0 below the Z pole, > 0 above).
+# A_FB(s) = (3/8)*F2/F1 is the standard result of integrating forward vs.
+# backward hemispheres. This captures the real gamma/Z interference (sign
+# flip below/above the peak) that a constant A_FB could not -- but note it is
+# a *different* level of approximation than the non-relativistic fixed-width
 # breit_wigner() used for the rate/lineshape side of this script (that one
 # ignores the photon propagator and interference entirely). Two different
 # approximations for two different observables, not a bug.
-SIN2_THETAW_EFF = 0.23155
-V_LEPTON = -0.5 + 2 * SIN2_THETAW_EFF
-A_LEPTON = -0.5
-Q_LEPTON = -1
-G_FERMI_GEV2 = 1.16637e-5
-
-
-def chi(sqrt_s: np.ndarray, mZ: float, gammaZ: float) -> np.ndarray:
-    s = np.asarray(sqrt_s, dtype=float) ** 2
-    kappa0 = G_FERMI_GEV2 * mZ**2 / (2 * np.sqrt(2) * np.pi * ALPHA_QED)
-    return kappa0 * s / (s - mZ**2 + 1j * mZ * gammaZ)
 
 
 def iba_f1_f2(sqrt_s: np.ndarray, sin2thetaw: float, mZ: float, gammaZ: float) -> tuple[np.ndarray, np.ndarray]:
-    v = -0.5 + 2 * sin2thetaw
-    a = -0.5
-    c = chi(sqrt_s, mZ, gammaZ)
-    # Q_f enters the interference terms LINEARLY (the electron's charge is
-    # absorbed into the sign convention). Squaring it here flipped the sign of
-    # A_FB until 2026-09-27; checked against an independent helicity-amplitude
-    # calculation, which this form now matches to machine precision.
-    f1 = Q_LEPTON**2 - 2 * Q_LEPTON * v * v * np.real(c) + (v**2 + a**2) ** 2 * np.abs(c) ** 2
-    f2 = -4 * Q_LEPTON * a * a * np.real(c) + 8 * (v * a) ** 2 * np.abs(c) ** 2
-    return f1, f2
+    """F1, F2 for e+e- -> mu+mu- with alpha(0) in chi (see electroweak.py
+    for why the A_FB fits keep alpha(0)). Q_f enters the interference terms
+    LINEARLY; squaring it flipped the sign of A_FB until 2026-09-27."""
+    return f1_f2(sqrt_s, mZ, gammaZ, "mumu", sin2thetaw, ALPHA_QED)
 
 
 def a_fb_true(
@@ -226,11 +209,16 @@ def run_scan(rng: np.random.Generator) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def fit_afb(scan: pd.DataFrame, mZ: float, gammaZ: float) -> Minuit:
+def fit_afb(scan: pd.DataFrame, mZ: float, gammaZ: float, minos: bool = True) -> Minuit:
     """Second fit, mirroring the real two-step LEP procedure: mZ and
     gammaZ come in fixed from the lineshape fit (fit_breit_wigner_isr), and
     sin2(theta_W_eff) is the one free parameter extracted from the measured
-    A_FB(s) points."""
+    A_FB(s) points.
+
+    A_FB depends on sin2(theta_W) only through v^2, whose derivative vanishes
+    at sin2 = 0.25, so the chi2 is not parabolic and the Hesse error is
+    symmetric where the real one is not. minos=True (the default) also runs
+    MINOS; afb_errors() returns its asymmetric errors."""
 
     def model(sqrt_s: np.ndarray, sin2thetaw: float) -> np.ndarray:
         return a_fb_true(sqrt_s, sin2thetaw=sin2thetaw, mZ=mZ, gammaZ=gammaZ)
@@ -247,7 +235,30 @@ def fit_afb(scan: pd.DataFrame, mZ: float, gammaZ: float) -> Minuit:
     minuit = Minuit(least_squares, sin2thetaw=0.23)
     minuit.migrad()
     minuit.hesse()
+    if minos:
+        minuit.minos("sin2thetaw")
     return minuit
+
+
+def afb_errors(fit: Minuit, name: str = "sin2thetaw") -> tuple[float, float, bool]:
+    """(lower, upper, from_minos): the MINOS errors as positive numbers. A
+    side MINOS could not find falls back to the Hesse error; from_minos is
+    True only if both sides came from MINOS. The upper side fails when the
+    chi2 rises by less than 1 between the minimum and sin2 = 0.25, beyond
+    which it falls again towards the mirror solution 0.5 - sin2."""
+    hesse = fit.errors[name]
+    if name not in fit.merrors:
+        return hesse, hesse, False
+    merror = fit.merrors[name]
+    lower = -merror.lower if merror.lower_valid else hesse
+    upper = merror.upper if merror.upper_valid else hesse
+    return lower, upper, bool(merror.lower_valid and merror.upper_valid)
+
+
+def asymmetric_pull(value: float, truth: float, lower: float, upper: float) -> float:
+    """(value - truth) divided by the error on the side of `value` that faces
+    the truth: the lower error if the fit came out high, the upper if low."""
+    return (value - truth) / (lower if value > truth else upper)
 
 
 def plot_afb(
@@ -389,7 +400,7 @@ def plot_closure(
         ax.spines[spine].set_color(MUTED)
     ax.tick_params(colors=MUTED)
 
-    legend = ax.legend(frameon=False, loc="upper right", fontsize=9)
+    legend = ax.legend(frameon=False, loc="upper left", fontsize=9)
     for text in legend.get_texts():
         text.set_color(INK)
 
@@ -452,10 +463,12 @@ def main() -> None:
     fit_afb_result = fit_afb(scan, fit_isr.values["mZ"], fit_isr.values["gammaZ"])
     print(f"chi2/ndof = {fit_afb_result.fval:.2f}/{fit_afb_result.ndof:.0f}")
     fitted_sin2 = fit_afb_result.values["sin2thetaw"]
-    fitted_sin2_err = fit_afb_result.errors["sin2thetaw"]
-    pull_sin2 = (fitted_sin2 - SIN2_THETAW_EFF) / fitted_sin2_err
-    print(f"  sin2(theta_W_eff) = {fitted_sin2:.5f} +/- {fitted_sin2_err:.5f}   (true input: {SIN2_THETAW_EFF:.5f})")
-    print(f"  pull vs. TRUE input: {pull_sin2:+.2f} sigma")
+    hesse_err = fit_afb_result.errors["sin2thetaw"]
+    lower, upper, from_minos = afb_errors(fit_afb_result)
+    print(f"  sin2(theta_W_eff) = {fitted_sin2:.5f} +{upper:.5f} -{lower:.5f} ({'MINOS' if from_minos else 'Hesse'}), "
+          f"+/- {hesse_err:.5f} (Hesse)   (true input: {SIN2_THETAW_EFF:.5f})")
+    print(f"  pull vs. TRUE input: {asymmetric_pull(fitted_sin2, SIN2_THETAW_EFF, lower, upper):+.2f} sigma (MINOS), "
+          f"{(fitted_sin2 - SIN2_THETAW_EFF) / hesse_err:+.2f} sigma (Hesse)")
 
     plot_afb(
         scan,

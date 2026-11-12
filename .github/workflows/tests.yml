@@ -15,7 +15,11 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest
-      # The real-data script is fast; the toy MC is seeded and should
-      # reproduce the README numbers. MadGraph5 is not available in CI.
+      # The real-data script, the toy MC (seeded) and the extensions are
+      # deterministic and should reproduce the README numbers. The pull study
+      # runs 20 toys as a smoke test; the README's 500 take ~5 minutes.
+      # MadGraph5 is not available in CI.
       - run: python src/compute_cross_section.py
       - run: python src/simulate_mumu.py
+      - run: python src/extended_fits.py
+      - run: python src/pull_study.py --n-toys 20
