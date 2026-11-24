@@ -39,7 +39,7 @@ def test_isr_average_matches_quad():
     rs, x_max = 91.2, 0.25
     beta = ccs.isr_beta(rs)
     f = lambda r: 1 / r**2  # noqa: E731
-    expected, _ = quad(lambda x: ccs.qed_radiator_full(x, beta) * f(rs * np.sqrt(1 - x)), 0, x_max, limit=200)
+    expected, _ = quad(lambda x: ccs.qed_radiator(x, beta) * f(rs * np.sqrt(1 - x)), 0, x_max, limit=200)
     assert afb.isr_average(f, rs, x_max) == pytest.approx(expected, rel=1e-6)
 
 

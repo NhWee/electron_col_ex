@@ -15,8 +15,8 @@ What the model contains, and what it does not:
   Z width (the same mass definition as the lineshape fit) and alpha(M_Z) in
   the photon/Z propagator ratio (alpha(0) as a variation).
 - Initial-state radiation, folded into the forward-backward and total cross
-  sections separately with the O(alpha) leading-log radiator of
-  compute_cross_section.py, up to a maximum radiated energy fraction x_max.
+  sections separately with the baseline radiator of compute_cross_section.py
+  (ISR_RADIATOR), up to a maximum radiated energy fraction x_max.
   OPAL's asymmetry acceptance cuts on the acollinearity (< 15 deg), not on
   s'/s; x_max = 0.25 (s'/s > 0.75) is used as the equivalent, and varied.
 - OPAL's acceptance |cos theta_l-| < k (k = 0.95 for mu, 0.90 for tau),
@@ -26,9 +26,10 @@ What the model contains, and what it does not:
   How much these matter is estimated by comparing this model with OPAL's own
   ZFITTER-based fit values, which Tables 22 and 23 also list.
 
-M_Z and Gamma_Z are fixed from this project's lineshape fit, mirroring the
-two-step procedure of the closure tests, and sin2(theta_W_eff) is the only
-free parameter (lepton universality: the same value for e, mu and tau).
+M_Z and Gamma_Z are fixed from this project's lineshape fit in the same
+(running-width) convention, mirroring the two-step procedure of the closure
+tests, and sin2(theta_W_eff) is the only free parameter (lepton universality:
+the same value for e, mu and tau).
 
     python src/afb_real_data.py
 
@@ -44,6 +45,7 @@ import numpy as np
 import pandas as pd
 from iminuit import Minuit
 
+import compute_cross_section as ccs
 from compute_cross_section import (
     AQUA,
     BLUE,
@@ -57,14 +59,14 @@ from compute_cross_section import (
     isr_beta,
 )
 
-ALPHA_0 = 1 / 137.035999
-ALPHA_MZ = 1 / 128.95  # on-shell alpha(M_Z^2), the improved-Born choice
-G_FERMI_GEV2 = 1.1663788e-5
+from electroweak import ALPHA_0, ALPHA_MZ, G_FERMI_GEV2
 
-# This project's ISR-convolved mu+mu- lineshape fit (README section 1) ...
-MZ_LINESHAPE, GZ_LINESHAPE = 91.1865, 2.5287
-# ... and the joint qq+mumu+tautau fit with beam spread (README section 4.3).
-MZ_JOINT, GZ_JOINT = 91.1974, 2.5144
+# This project's mu+mu- lineshape fit with the full gamma/Z model, converted
+# to the running-width convention this model's propagator uses (README
+# results row 5) ...
+MZ_LINESHAPE, GZ_LINESHAPE = 91.1853, 2.4856
+# ... and the joint qq+mumu+tautau gamma/Z fit (README results row 10).
+MZ_JOINT, GZ_JOINT = 91.1908, 2.5065
 
 OPAL_SIN2W_EFF, OPAL_SIN2W_EFF_ERR = 0.2325, 0.0010
 OPAL_A0FB_LEPT, OPAL_A0FB_LEPT_ERR = 0.0145, 0.0017
@@ -134,18 +136,23 @@ def f1_f2(sqrt_s: np.ndarray, sin2w: float, mZ: float, gZ: float, alpha: float =
     return f1, f2
 
 
-def isr_average(func, sqrt_s: float, x_max: float) -> float:
-    """int_0^x_max H(x) func(s(1-x)) dx with the full O(alpha) leading-log
-    radiator H(x) = beta x^(beta-1)(1 + 3beta/4) - beta(1 - x/2). The soft
-    term is integrated in u = x^beta, which removes its endpoint singularity
-    (beta x^(beta-1) dx = du), so plain Gauss-Legendre is accurate."""
+def isr_average(func, sqrt_s: float, x_max: float, radiator: str | None = None) -> float:
+    """int_0^x_max H(x) func(s(1-x)) dx with the baseline radiator of
+    compute_cross_section.py, H(x) = beta x^(beta-1) soft(beta) + hard(x).
+    The soft term is integrated in u = x^beta, which removes its endpoint
+    singularity (beta x^(beta-1) dx = du); the hard term, whose O(alpha^2)
+    part has a ln x, in t = sqrt(x). Gauss-Legendre is then accurate to
+    better than 1e-6 (tested against scipy.quad)."""
+    soft_f, hard_f = ccs.RADIATOR_PARTS[radiator or ccs.ISR_RADIATOR]
     beta = isr_beta(sqrt_s)
     u_max = x_max**beta
     u = 0.5 * u_max * (_GL_X + 1)
     x_soft = u ** (1 / beta)
-    soft = (1 + 0.75 * beta) * 0.5 * u_max * np.sum(_GL_W * func(sqrt_s * np.sqrt(1 - x_soft)))
-    x = 0.5 * x_max * (_GL_X + 1)
-    hard = -beta * 0.5 * x_max * np.sum(_GL_W * (1 - x / 2) * func(sqrt_s * np.sqrt(1 - x)))
+    soft = soft_f(beta) * 0.5 * u_max * np.sum(_GL_W * func(sqrt_s * np.sqrt(1 - x_soft)))
+    t_max = np.sqrt(x_max)
+    t = 0.5 * t_max * (_GL_X + 1)
+    x = t**2
+    hard = 0.5 * t_max * np.sum(_GL_W * 2 * t * hard_f(x, beta) * func(sqrt_s * np.sqrt(1 - x)))
     return soft + hard
 
 
