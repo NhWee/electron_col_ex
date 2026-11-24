@@ -70,12 +70,12 @@ error_budget()                        → 오차가 어디서 오는지
 python -m pytest
 ```
 
-**무엇을 하나.** 코드가 바뀌어도 물리가 깨지지 않았는지 29가지를 확인한다.
+**무엇을 하나.** 코드가 바뀌어도 물리가 깨지지 않았는지 36가지를 확인한다.
 예를 들어 ISR 복사 함수가 정확히 1로 적분되는지, 전방-후방 비대칭이 피크
 아래에서 음수·위에서 양수인지, 노이즈 없는 데이터에서 피팅이 입력값을 그대로
 돌려주는지, 손으로 옮긴 데이터가 OPAL 발표값과 2% 이내로 맞는지.
 
-**무엇이 나오나.** `29 passed in 4.13s`. 실패가 있으면 그 테스트 이름이
+**무엇이 나오나.** `36 passed in 4.7s`. 실패가 있으면 그 테스트 이름이
 무엇이 깨졌는지 알려 준다.
 
 **왜 먼저 하나.** 이후 단계의 숫자를 믿기 전에 환경(패키지 버전 등)이
@@ -250,11 +250,12 @@ python src/extended_fits.py
                              model  mZ_GeV  gammaZ_GeV   norm
     non-relativistic BW (baseline) 91.1864      2.5284 2.0105
      relativistic running-width BW 91.1865      2.5349 2.0095
-IBA gamma+Z+interf., s'/s > 0.7225 91.1536      2.5107 1.0277
+IBA gamma+Z+interf., m_ff^2/s > 0.01 91.1548      2.5008 1.0172
 ```
-세 번째 줄의 M_Z가 33 MeV 낮은 것은 질량 **정의**가 다르기 때문이다(README
-0.2절). `norm` 1.028은 "계산한 단면적이 표준모형 절대 예측의 1.028배"라는
-뜻으로, PDG 입력 없이 절대 정규화가 3% 이내로 맞는다는 독립 검증이다.
+세 번째 줄의 M_Z가 32 MeV 낮은 것은 질량 **정의**가 다르기 때문이다(README
+0.2절). `norm` 1.017은 "계산한 단면적이 표준모형 절대 예측의 1.017배"라는
+뜻으로, PDG 입력 없이 절대 정규화가 맞는다는 독립 검증이다(오차 ±0.058).
+복사 적분은 OPAL 논문 Table 2의 실제 컷 m²_ff/s > 0.01까지 한다.
 
 **4.3 결합 피팅.** qq, μμ, ττ를 공통 M_Z, Γ_Z로 한꺼번에 피팅한다.
 ```
@@ -272,7 +273,42 @@ IBA gamma+Z+interf., s'/s > 0.7225 91.1536      2.5107 1.0277
 
 ---
 
-## 단계 5, 6. MadGraph5 (선택, 각 1~2분)
+## 단계 5. 실제 OPAL 데이터의 A_FB (10초)
+
+```bash
+python src/afb_real_data.py
+```
+
+**무엇을 하나.** 1~2단계의 sin²θ_W는 가짜 데이터에서만 구한 값이다. 실제
+데이터용 입력은 같은 논문의 Table 22(μμ)와 23(ττ)에 있다. 1990~1995년 29개
+에너지 점마다 OPAL이 측정한 전방-후방 비대칭과 통계 오차이고, Table 25는
+계통오차 공분산이다(`data/raw/`). 여기에 ISR을 넣은 γ/Z 모형을 맞춰
+sin²θ_W 하나를 구한다. M_Z, Γ_Z는 1단계 lineshape 값으로 고정한다.
+
+**화면에서 볼 것.**
+```
+chi2/ndof = 49.7/57
+  sin2(theta_W_eff) = 0.23113 +/- 0.00101  (MINOS -0.00098 / +0.00103)
+  vs OPAL sin2(theta_lept_eff) = 0.2325 +/- 0.001: -0.96 sigma
+...
+                Born, no ISR 0.24990 ... 129.43  57
++ ZFITTER-calibrated missing effects 0.23231 0.00107 48.67 57
+...
+  sin2(theta_W_eff) = 0.2311 +/- 0.0010 (stat+syst) +/- 0.0015 (model)   vs OPAL 0.2325 +/- 0.001: -0.67 sigma
+```
+- 결과는 OPAL 값과 0.7σ 차이다.
+- ISR을 빼면 어떤 sin²θ_W로도 맞지 않는다(χ² 129/57). A_FB에서도 ISR이 필요하다.
+- 가장 큰 모형 오차는 이 모형에 빠진 효과(초기-최종 상태 간섭, FSR)다. OPAL의
+  ZFITTER 값과 비교해 그 차이를 넣으면 0.2323으로 OPAL과 0.1σ가 된다.
+- "M_Z free" 줄은 A_FB만으로는 M_Z와 sin²θ_W를 분리할 수 없다는 것을 보여 주는
+  것이지 측정값이 아니다.
+
+**생기는 파일.** `afb_real_data_fits.csv`, `afb_model_vs_opal_fit.csv`,
+`afb_real_data.png`.
+
+---
+
+## 단계 6, 7. MadGraph5 (선택, 각 1~2분)
 
 ```bash
 export MG5_PATH=/path/to/MG5_aMC_v3_5_0/bin/mg5_aMC
@@ -286,11 +322,11 @@ python src/simulate_mumu_mg5.py --isr    # ISR 켬 (MG5 3.2 이상, 아직 아�
 MG5를 13번 호출해 각 에너지에서 사건을 만들고, 나온 μ⁻의 각도를 읽어 2단계와
 같은 처리를 한다.
 
-**ISR 끔(5단계)에서 기대하는 것.** 생성기에 ISR이 없으므로 **ISR 없는 피팅이
+**ISR 끔(6단계)에서 기대하는 것.** 생성기에 ISR이 없으므로 **ISR 없는 피팅이
 맞고 ISR 피팅은 −8.5σ로 틀려야 한다**. 실제 데이터와 정반대. ISR 보정이
 "항상 PDG 쪽으로 미는" 게 아니라 물리적으로 맞는 방향으로 움직인다는 증거.
 
-**ISR 켬(6단계)에서 기대하는 것.** 이번엔 실제 데이터처럼 ISR 피팅이 정답을
+**ISR 켬(7단계)에서 기대하는 것.** 이번엔 실제 데이터처럼 ISR 피팅이 정답을
 복원하고 ISR 없는 피팅이 위로 치우쳐야 한다. 이 코드는 MG5가 없는 환경에서
 작성되어 **아직 실행된 적이 없다**. 처음 돌리는 사람이 결과를 README 3절에
 추가해 주면 된다. MG5가 run_card 파라미터 이름을 모르겠다고 하면 MG5 버전이
@@ -305,7 +341,7 @@ MG5를 13번 호출해 각 에너지에서 사건을 만들고, 나온 μ⁻의 
 | `ModuleNotFoundError: No module named 'compute_cross_section'` | 스크립트를 `python src/xxx.py`로 실행해야 한다. `src/` 안에 들어가서 실행하거나 `python -m src.xxx`로 실행하면 import 경로가 달라진다. |
 | `pytest`에서 import 오류 | `tests/conftest.py`가 `src/`를 경로에 넣는다. 저장소 최상위에서 `python -m pytest`로 실행. |
 | 3단계가 너무 느리다 | `--n-toys 50`. 결론을 보는 데는 충분하고 통계적 정밀도만 떨어진다. |
-| `MadGraph5 executable not found` | 5~6단계만 해당. `MG5_PATH` 설정. 없으면 건너뛰어도 1~4단계 결과는 완전하다. |
+| `MadGraph5 executable not found` | 6~7단계만 해당. `MG5_PATH` 설정. 없으면 건너뛰어도 1~4단계 결과는 완전하다. |
 | 숫자가 README와 소수점 넷째 자리에서 다르다 | 패키지 버전 차이(특히 scipy의 적분, iminuit). `requirements.txt` 주석의 버전으로 맞추면 같아진다. 결론이 달라지면 문제지만 마지막 자리는 아니다. |
 | 그림이 안 열린다 / `DISPLAY` 오류 | 스크립트는 화면에 띄우지 않고 파일로만 저장한다. `data/processed/*.png`를 열면 된다. |
 

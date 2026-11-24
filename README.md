@@ -44,9 +44,10 @@ done here.
 | 7 | Can a second, independent observable come out of the same events? | $\sin^2\theta_W^{\mathrm{eff}} = 0.23021 \pm 0.00408$ from the forward-backward asymmetry (true input 0.23155, $-0.3\sigma$) |
 | 8 | Does it still work when the truth model is not my own code? | With MadGraph5-generated events and ISR switched off at the generator, the **naive fit now wins** and the ISR fit is $-8.5\sigma$. That inversion is the correct behaviour, and is the strongest evidence the ISR correction does real work. $A_{\mathrm{FB}}$ gives $\sin^2\theta_W^{\text{on-shell}} = 0.2243 \pm 0.0071$ (truth 0.2222, $+0.3\sigma$) |
 | 9 | What happens with more points, the LEP propagator, and all channels at once? | Six borrowed-$f$ points move the result by $<1$ MeV; the running-width propagator moves $\Gamma_Z$ by $+6.5$ MeV; a joint $qq+\mu\mu+\tau\tau$ fit gives $M_Z = 91.1974 \pm 0.0035$, $\Gamma_Z = 2.5144 \pm 0.0058$ GeV and $\sigma_{\mu\mu}/\sigma_{\tau\tau} = 1.000 \pm 0.006$ -- a fit error now **below** the model systematics ([section 4](#4-extensions)) |
+| 10 | And $\sin^2\theta_W$ from *real* data? | From OPAL's measured $\mu\mu$ and $\tau\tau$ asymmetries (58 points, 1990-1995): $\mathbf{\sin^2\theta_W^{\mathrm{eff}} = 0.2311 \pm 0.0010\ (\mathrm{data}) \pm 0.0015\ (\mathrm{model})}$, against OPAL's own $0.2325 \pm 0.0010$ ($-0.7\sigma$). Without ISR no value fits ($\chi^2/\mathrm{ndf} = 129/57$) ([section 5](#5-real-afb)) |
 
-Rows 3 to 5 are the physics result. Rows 6 to 8 are the evidence that row 4
-is not a coincidence. Row 9 is where the next limitation sits.
+Rows 3 to 5 and 10 are the physics results. Rows 6 to 8 are the evidence
+that row 4 is not a coincidence. Row 9 is where the next limitation sits.
 
 ---
 
@@ -56,11 +57,12 @@ is not a coincidence. Row 9 is where the next limitation sits.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt   # or requirements.txt without pytest/Jupyter
 
-python -m pytest                        # 29 regression tests, ~5 s
+python -m pytest                        # 36 regression tests, ~5 s
 python src/compute_cross_section.py     # real OPAL data: rows 1-5 above
 python src/simulate_mumu.py             # toy-MC closure test: rows 6-7
 python src/pull_study.py                # 500 repeated toys, ~8 min: row 6
 python src/extended_fits.py             # more points, LEP lineshapes, joint fit: row 9
+python src/afb_real_data.py             # sin2(theta_W) from OPAL's measured A_FB: row 10
 python src/simulate_mumu_mg5.py         # generator-level closure: row 8 (needs MadGraph5)
 python src/simulate_mumu_mg5.py --isr   # same, with MG5's ISR on (MG5 >= 3.2, not yet run)
 ```
@@ -316,9 +318,11 @@ Two practical consequences:
 - $x_{\max}$ can be 1 for a pure Breit-Wigner, since the resonance itself
   suppresses the large-$x$ tail. It **cannot** once the photon-exchange term of
   $F_1$ is included: that term grows as $1/s'$, so radiating away almost all the
-  energy diverges. This is *radiative return*, and a real experiment removes it
-  with a cut on the reconstructed $\sqrt{s'}$ -- so adding the interference
-  term requires knowing OPAL's own cut. It is not a free choice.
+  energy diverges. This is *radiative return*, and an experiment bounds it
+  with a cut on the final-state mass -- so adding the interference term
+  requires knowing OPAL's own cut. It is not a free choice. OPAL's is
+  $m_{ff}^2/s > 0.01$ for the $\mu\mu$ and $\tau\tau$ cross sections (Table 2
+  of the paper): nearly inclusive, so $x_{\max} = 0.99$.
 
 ### 0.6 What is being computed from the data
 
@@ -770,19 +774,21 @@ clean points):
 |---|---|---|---|---|
 | non-relativistic BW in $\sqrt{s}$ (baseline) | 1.43 | $91.1864 \pm 0.0119$ | $2.5284 \pm 0.0191$ | $2.011 \pm 0.009$ nb |
 | relativistic, running width $s\Gamma_Z/M_Z$ | 1.61 | $91.1865 \pm 0.0120$ | $2.5349 \pm 0.0197$ | $2.010 \pm 0.009$ nb |
-| improved Born $\gamma + Z + $ interference, fixed width, $s'/s > 0.7225$ | 1.60 | $91.1536 \pm 0.0121$ | $2.5107 \pm 0.0233$ | $1.028 \pm 0.016$ |
+| improved Born $\gamma + Z + $ interference, fixed width, $m_{ff}^2/s > 0.01$ | 1.60 | $91.1548 \pm 0.0121$ | $2.5008 \pm 0.0821$ | $1.017 \pm 0.058$ |
 
 The running-width form moves $M_Z$ by $+0.1$ MeV and $\Gamma_Z$ by
 $+6.5$ MeV: the cancellation on $M_Z$ is confirmed, the width shift is new
 and goes into the model error. The third row uses the fixed-width
-$\chi(s)$ of section 0.3 and lands $33$ MeV lower, as section 0.2 says a
+$\chi(s)$ of section 0.3 and lands $32$ MeV lower, as section 0.2 says a
 fixed-width convention must. Its normalization is a free overall factor on
-the absolute $G_F$-based prediction, and comes out $1.028 \pm 0.016$: the
+the absolute $G_F$-based prediction, and comes out $1.017 \pm 0.058$: the
 computed cross sections agree with the Standard Model's absolute
-normalization to $3\%$ ($1.7\sigma$), with no PDG input. The $s'/s$ cut
-in that row is what OPAL's leptonic cross-section definition uses as far as
-the author recalls; it could not be re-checked against the paper from the
-environment these changes were made in and is flagged in ROADMAP.md.
+normalization, with no PDG input. The ISR integral in that row runs to
+OPAL's own cross-section cut, $m_{ff}^2/s > 0.01$ (paper, Table 2). An
+earlier version used $s'/s > 0.7225$, a value recalled rather than read;
+with the real, nearly inclusive cut, the radiative-return tail lets the
+normalization and $\Gamma_Z$ trade off against each other, which is why
+their errors grew. $M_Z$ moved by $+1$ MeV.
 
 ### 4.3 Joint fit of $qq$, $\mu\mu$ and $\tau\tau$
 
@@ -822,6 +828,96 @@ not more data.
 
 </details>
 
+<details>
+<summary><b>5. sin²θ_W from OPAL's measured forward-backward asymmetries</b> (<code>src/afb_real_data.py</code>)</summary>
+
+<a id="5-real-afb"></a>
+
+### Why this exists
+
+Sections 2 and 3 extract $\sin^2\theta_W$ from simulated events only. The
+Zedometry tables used in section 1 give total counts per channel, not
+forward and backward ones, so the real-data counterpart needs a different
+input. The same paper supplies it: Tables 22 and 23 list OPAL's measured
+$\mu^+\mu^-$ and $\tau^+\tau^-$ asymmetries at all 29 energy points of
+1990-1995 (unbinned likelihood fits to $\cos\theta_{\ell^-}$, already
+corrected for background, charge misassignment and beam-energy spread), and
+Table 25 their systematic covariance. These are now in `data/raw/` and are
+fitted with the same improved-Born $A_{\mathrm{FB}}$ formula the closure
+tests use.
+
+Unlike section 1, the input here is a measured asymmetry, not raw counts:
+OPAL's angular fit is taken as given. What is computed here is the
+interpretation: radiating the asymmetry, matching OPAL's acceptance, and
+extracting $\sin^2\theta_W^{\mathrm{eff}}$.
+
+### The model
+
+- $\gamma + Z$ exchange and interference (section 0.3), with a running-width
+  propagator so that $M_Z$ means the same thing as in the lineshape fit, and
+  $\alpha(M_Z) = 1/128.95$ in $\chi(s)$.
+- ISR: the forward-backward and total cross sections are each folded with the
+  $\mathcal{O}(\alpha)$ radiator, then divided. OPAL's asymmetry acceptance
+  cuts on acollinearity ($< 15^\circ$) rather than $s'/s$; $x_{\max} = 0.25$
+  ($s'/s > 0.75$) stands in for it and is varied.
+- Acceptance $|\cos\theta_{\ell^-}| < 0.95$ ($\mu$) and $0.90$ ($\tau$) via
+  the paper's own Equation 5, $A(|\cos\theta| < k) = A \cdot 4k/(3+k^2)$.
+- $M_Z$, $\Gamma_Z$ fixed from this project's lineshape fit (section 1);
+  $\sin^2\theta_W$ is the only free parameter, common to $e$, $\mu$, $\tau$.
+- Not included: initial-final interference and FSR, which OPAL leaves in its
+  measured values. Their size is measured below.
+
+### Result
+
+<p align="center">
+  <img src="figures/afb_real_data.png" width="640"
+       alt="OPAL mu+mu- and tau+tau- forward-backward asymmetries versus sqrt(s), with the ISR-convolved fit and the failed Born fit">
+</p>
+
+$$\sin^2\theta_W^{\mathrm{eff}} = 0.2311 \pm 0.0010\ (\mathrm{stat+syst}) \pm 0.0015\ (\mathrm{model}), \qquad \chi^2/\mathrm{ndf} = 49.7/57$$
+
+against OPAL's $0.2325 \pm 0.0010$ (all three lepton species, ZFITTER): a
+$-0.7\sigma$ difference. MINOS gives $-0.00098 / +0.00103$, so the
+asymmetric-error issue of the pull study (section 2) is small at this
+precision.
+
+| Variation | $\sin^2\theta_W^{\mathrm{eff}}$ | $\chi^2/\mathrm{ndf}$ |
+|---|---|---|
+| **Baseline** ($\mu\mu + \tau\tau$) | $\mathbf{0.23113 \pm 0.00101}$ | 49.7/57 |
+| $\mu\mu$ only | $0.23083 \pm 0.00125$ | 23.8/28 |
+| $\tau\tau$ only | $0.23166 \pm 0.00170$ | 25.8/28 |
+| ISR $x_{\max} = 0.15$ / $0.40$ | $0.23174$ / $0.23082$ | 50.4 / 49.5 |
+| $\alpha(0)$ instead of $\alpha(M_Z)$ in $\chi(s)$ | $0.23160$ | 44.5/57 |
+| $M_Z$, $\Gamma_Z$ from the joint fit (section 4.3) | $0.23068$ | 49.8/57 |
+| model $+$ ZFITTER-calibrated missing effects | $0.23231 \pm 0.00107$ | 48.7/57 |
+| Born, no ISR | no solution below 0.25 | 129/57 |
+
+Four things to read from it:
+
+- **ISR matters for the asymmetry too.** Without it the fit runs to the
+  $\sin^2\theta_W = 0.25$ boundary and fails ($\chi^2/\mathrm{ndf} = 129/57$):
+  above the pole, radiative return moves events onto the resonance, where
+  the asymmetry is small, and pulls the observed $A_{\mathrm{FB}}$ down.
+- **Lepton universality.** $\mu\mu$ and $\tau\tau$ agree within $0.4\sigma$.
+- **The leading model term is what the model leaves out.** Evaluated at
+  OPAL's own fitted parameters, this model sits $0.003$ below OPAL's
+  ZFITTER fit values near the pole for muons (`afb_model_vs_opal_fit.csv`):
+  initial-final interference, FSR and the exact $E > 6$ GeV / acollinearity
+  acceptance. Adding that per-point difference to the model ("ZFITTER-
+  calibrated") moves the result by $+0.0012$, to $0.2323 \pm 0.0011$,
+  $-0.1\sigma$ from OPAL. It is carried as a model systematic, not used as
+  the baseline, because it imports OPAL's theory code.
+- **Model systematic in total, $0.0015$**: missing effects $0.0012$, ISR cut
+  $0.0006$, $\alpha$ choice $0.0005$, $M_Z/\Gamma_Z$ input $0.0005$.
+
+Two fits are deliberately not quoted: with $M_Z$ also free, $A_{\mathrm{FB}}$
+alone cannot separate $M_Z$ from $\sin^2\theta_W$ (the zero crossing moves
+with both) and the fit runs to the boundary; and the derived pole asymmetry
+$A^{0,\ell}_{\mathrm{FB}} = \tfrac34 A_\ell^2 = 0.0169$ is a function of the
+same number, not an independent check.
+
+</details>
+
 ---
 
 ## Data
@@ -834,6 +930,8 @@ page-checked against the PDF.
 | `opal_zedometry_table1_event_counts.csv` | Table 1 | $N$ (qq/ee/mumu/tautau) and $L$ per energy point, 1990-1995, 29 rows: **the actual raw input** |
 | `opal_zedometry_table{3,5,6,7}_*_corrections.csv` | 3, 5, 6, 7 | Correction factor $f$ and its systematic error, one file per final state. Only tabulated for 7 points |
 | `opal_zedometry_table{8,9,10,11}_*_xsec_published.csv` | 8-11 | OPAL's own published cross sections, used **only** to validate the computed values, never as calculation input |
+| `opal_zedometry_table{22,23}_*_afb.csv` | 22, 23 | Measured $\mu\mu$ and $\tau\tau$ forward-backward asymmetries, 29 points each, with OPAL's ZFITTER fit values. Parsed from the PDF text with every row label checked (2026-11-24) |
+| `opal_zedometry_table25_lepton_afb_syst.csv` | 25 | Signed square roots of the asymmetry systematic covariance, $10^{-3}$ |
 | `HEPData-ins1808875-v1-Table_1.csv` | | BESIII $e^+e^- \to \mu^+\mu^-$ ([arXiv:2007.12872](https://arxiv.org/abs/2007.12872)), an earlier dead end: a *final* published result with nothing left to compute. Kept for the record |
 | `opal_zedometry_hep-ex-0012018.pdf` | | Source paper, for provenance (not tracked in git) |
 
@@ -846,6 +944,7 @@ src/
   pull_study.py              2. the same toy repeated 500 times: bias and coverage
   simulate_mumu_mg5.py       3. generator-level closure test (MadGraph5), --isr mode
   extended_fits.py           4. borrowed-f points, LEP lineshape models, joint channel fit
+  afb_real_data.py           5. sin2(theta_W) from OPAL's measured lepton asymmetries
 tests/                          pytest regression suite (physics identities, Asimov closures, data)
 data/raw/                       hand-transcribed OPAL tables (tracked)
 data/processed/                 script output: tables and plots (gitignored)
@@ -878,7 +977,11 @@ Per-script limitations are inside each section above. Project-wide:
   earlier versions; the error budget carries them.
 - **The $A_{\mathrm{FB}}$ error is parabolic in a non-parabolic parameter.**
   The pull study shows its Hesse error is $10\%$ too large on average and
-  asymmetric. MINOS errors or a fit in $v^2$ would cure it.
+  asymmetric on the toy sample. On real data (section 5) MINOS is used and
+  the asymmetry is small, $-0.00098 / +0.00103$.
+- **The real-data $A_{\mathrm{FB}}$ model omits initial-final interference
+  and FSR.** Measured against OPAL's ZFITTER values they are worth $0.0012$
+  on $\sin^2\theta_W$, the largest term of section 5's model error.
 - **The joint fit is model-limited.** Its $2.8\sigma$ / $3.3\sigma$ pulls
   from PDG are the model terms above showing through a fit error that has
   become smaller than they are, not a disagreement with the data.

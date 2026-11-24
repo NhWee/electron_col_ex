@@ -63,12 +63,13 @@ from simulate_mumu import GEV2_TO_NB, SIN2_THETAW_EFF, iba_f1_f2
 PDG_R_LEPTON = 20.767
 PDG_SIGMA0_HAD_NB = 41.481
 
-# OPAL defines its leptonic cross sections within an s'/s acceptance so that
-# radiative-return events (a hard ISR photon bringing the collision back
-# down to the Z) are excluded. The value below is the cut as recalled from
-# the OPAL lineshape paper; it could not be re-checked against the PDF from
-# this environment and should be verified (ROADMAP P1-3).
-SPRIME_OVER_S_MIN = 0.7225
+# OPAL's mu+mu- and tau+tau- cross sections are defined for a final-state
+# pair mass m_ff^2/s > 0.01 (hep-ex/0012018, Table 2): essentially
+# inclusive, radiative return included. Without FSR, m_ff^2 = s', so the ISR
+# integral runs to x_max = 0.99. (Until 2026-11 this was 0.7225, a value
+# recalled rather than read from the paper; that version moved M_Z by
+# -33 MeV for the same mass-definition reason it still shows.)
+SPRIME_OVER_S_MIN = 0.01
 X_MAX_FROM_CUT = 1 - SPRIME_OVER_S_MIN
 
 
@@ -165,7 +166,7 @@ def iba_lineshape_isr(sqrt_s, sigma_peak, mZ, gammaZ):
 LINESHAPE_MODELS = {
     "non-relativistic BW (baseline)": (breit_wigner_isr, dict(sigma_peak=2.0)),
     "relativistic running-width BW": (breit_wigner_relativistic_isr, dict(sigma_peak=2.0)),
-    f"IBA gamma+Z+interf., s'/s > {SPRIME_OVER_S_MIN}": (iba_lineshape_isr, dict(sigma_peak=1.0)),
+    f"IBA gamma+Z+interf., m_ff^2/s > {SPRIME_OVER_S_MIN}": (iba_lineshape_isr, dict(sigma_peak=1.0)),
 }
 
 

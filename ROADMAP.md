@@ -13,12 +13,13 @@ README의 Caveats와 코드·데이터를 함께 검토한 결과를 우선순�
 | P0-1 오차 예산 | ✅ 완료 (`error_budget()`, README 1절) |
 | P0-2 pull 분포 | ✅ 완료 (`src/pull_study.py`, 500회, README 2절) |
 | P0-3 radiator 교체 | ✅ 완료 (`qed_radiator_full`, +7.1/+10.1 MeV) |
-| P0-4 테스트 | ✅ 완료 (`tests/`, 29개, CI 포함) |
+| P0-4 테스트 | ✅ 완료 (`tests/`, 36개, CI 포함) |
 | P1-1 에너지 점 늘리기 | ✅ 완료, 효과 작음 (README 4.1절) |
 | P1-2 MG5 ISR 검증 | 🟡 코드 완료, **미실행** (MG5 없음) |
-| P1-3 LEP 표준 lineshape | ✅ 완료 (README 4.2절), s′/s 컷 값 확인 필요 |
+| P1-3 LEP 표준 lineshape | ✅ 완료 (README 4.2절), 컷 값 논문에서 확인 |
 | P1-4 다채널 결합 피팅 | ✅ 완료 (README 4.3절) |
-| P1-5 1993 peak 이상 규명 | ⬜ 미착수 (논문 접근 필요) |
+| P1-5 1993 peak 이상 규명 | ⬜ 미착수 (논문은 이제 확보됨) |
+| P1-6 실제 데이터 A_FB | ✅ 완료 (`src/afb_real_data.py`, README 5절) |
 | P2-1 requirements 정리 | ✅ 완료 |
 | P2-2 CI | ✅ 완료 (`.github/workflows/tests.yml`) |
 | P2-3 빈 notebooks/ | ✅ 삭제 |
@@ -62,7 +63,7 @@ sin²θ_W는 폭 0.90으로 오차가 10% 과대추정되고 +1.6에서 잘린�
 
 ### P0-4. 회귀 테스트가 없다
 
-**상태 (완료).** `tests/` 29개, 5초 이내. radiator 정규화, running/fixed width
+**상태 (완료).** `tests/` 36개, 5초 이내. radiator 정규화, running/fixed width
 항등식, A_FB 부호·거울 대칭, Asimov 복원(lineshape, A_FB, 결합 피팅), 데이터
 전사(발표값과 2% 이내), MG5 boost·LHE 파싱. CI에서 실행.
 
@@ -91,12 +92,11 @@ run_card 파라미터 이름은 3.5.x 템플릿 기준이며 틀리면 MG5가 �
 ### P1-3. LEP 표준 lineshape 모형
 
 **상태 (완료).** running-width BW: M_Z +0.1, Γ_Z +6.5 MeV. γ+Z+간섭 IBA 모형
-(fixed-width χ(s), s′/s > 0.7225 컷): M_Z −33 MeV(질량 정의 차이, README 0.2절
-예측대로), 절대 정규화 1.028 ± 0.016.
+(fixed-width χ(s)): M_Z −32 MeV(질량 정의 차이, README 0.2절 예측대로),
+절대 정규화 1.017 ± 0.058. 컷은 논문 Table 2에서 확인한 OPAL의 실제 정의
+m²_ff/s > 0.01을 쓴다(2026-11-24; 이전의 s′/s > 0.7225는 기억에 의존한 틀린 값이었다).
 
-**남은 일.** s′/s 컷 값 0.7225를 논문(hep-ex/0012018)에서 확인. 이 세션에서는
-arxiv.org 접근이 막혀 확인하지 못했다. running-width + γ/Z 간섭을 결합한 모형을
-기본 피팅으로 승격할지 결정.
+**남은 일.** running-width + γ/Z 간섭을 결합한 모형을 기본 피팅으로 승격할지 결정.
 
 ### P1-4. 다채널 결합 피팅
 
@@ -109,6 +109,16 @@ arxiv.org 접근이 막혀 확인하지 못했다. running-width + γ/Z 간섭�
 한계를 뜻한다. 다음 개선은 데이터가 아니라 O(α²) radiator.
 
 **남은 일.** ee 채널의 t-채널 빼기 후 포함, γ/Z 모형으로 결합 피팅.
+
+### P1-6. 실제 OPAL 데이터의 A_FB로 sin²θ_W
+
+**상태 (완료, 2026-11-24).** 논문 Table 22, 23(μμ, ττ 측정 A_FB, 각 29점)과
+Table 25(계통 공분산)를 `data/raw/`에 옮기고 ISR을 넣은 γ/Z 모형으로 피팅.
+sin²θ_eff = 0.2311 ± 0.0010 (data) ± 0.0015 (model), OPAL 0.2325 ± 0.0010과 −0.7σ.
+ISR 없이는 맞지 않음(χ² 129/57). 모형 오차의 대부분은 초기-최종 상태 간섭과
+FSR 누락이며, OPAL ZFITTER 값으로 보정하면 0.2323 ± 0.0011.
+
+**남은 일.** 초기-최종 상태 간섭을 모형에 직접 넣기. ee 채널(t-채널 포함) 추가.
 
 ### P1-5. 1993 peak 이상(μμ −7.5%, ττ −4.1%) 규명
 
@@ -131,5 +141,5 @@ arxiv.org 접근이 막혀 확인하지 못했다. running-width + γ/Z 간섭�
 1. **MG5가 있는 환경에서 `python src/simulate_mumu_mg5.py --isr` 실행** (P1-2)
 2. **O(α²) radiator** (P0-3 후속): 결합 피팅의 최대 계통오차
 3. **A_FB에 MINOS 오차** (P0-2 후속)
-4. s′/s 컷 값과 1993 peak 이상을 논문에서 확인 (P1-3, P1-5)
+4. 1993 peak 이상을 논문에서 확인 (P1-5; s′ 컷은 확인 완료)
 5. 그림 자동화 (P2-4)

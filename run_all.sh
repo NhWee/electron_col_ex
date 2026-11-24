@@ -50,20 +50,26 @@ banner 4 "Extensions  (src/extended_fits.py)" \
  jointly with a common M_Z and Gamma_Z."
 python src/extended_fits.py
 
+banner 5 "sin2(theta_W) from OPAL's measured asymmetries  (src/afb_real_data.py)" \
+"Fits OPAL's own mu+mu- and tau+tau- forward-backward asymmetries (Tables 22-23,
+ 58 points) with the radiated gamma/Z model. This is the real-data version of
+ the A_FB result that steps 2-3 checked on simulation."
+python src/afb_real_data.py
+
 if [ -n "${MG5_PATH:-}" ]; then
-    banner 5 "MadGraph5 closure test, ISR off  (src/simulate_mumu_mg5.py)" \
+    banner 6 "MadGraph5 closure test, ISR off  (src/simulate_mumu_mg5.py)" \
 "Same closure test, but the events come from an independent matrix-element
  generator. With ISR off the NAIVE fit should win and the ISR fit be biased
  low -- the mirror image of the real data."
     python src/simulate_mumu_mg5.py
 
-    banner 6 "MadGraph5 closure test, ISR on  (src/simulate_mumu_mg5.py --isr)" \
+    banner 7 "MadGraph5 closure test, ISR on  (src/simulate_mumu_mg5.py --isr)" \
 "MG5's own electron structure functions radiate before the collision. Now the
  ISR-convolved fit should recover the truth and the naive fit be biased high,
  as on OPAL data. This is the test the toy MC cannot provide."
     python src/simulate_mumu_mg5.py --isr
 else
-    printf '\n(Steps 5-6, the MadGraph5 closure tests, skipped: set MG5_PATH to your bin/mg5_aMC to run them.)\n'
+    printf '\n(Steps 6-7, the MadGraph5 closure tests, skipped: set MG5_PATH to your bin/mg5_aMC to run them.)\n'
 fi
 
 printf '\nDone. Tables and plots are in data/processed/. Compare the numbers with README.md.\n'
